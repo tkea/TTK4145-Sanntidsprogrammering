@@ -1,0 +1,5 @@
+[package]
+
+name = "elevator"
+version = "0.1.0"
+authors = [ "Tor K. E. Andreassen <tor.andreassen2@gmail.com>" ]
