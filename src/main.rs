@@ -5,31 +5,86 @@ extern crate elevator;
 
 use elevator::elevator_driver::elev_io::*;
 
+// ElevatorData...
+struct Elevator {
+    io: ElevIo,
+    current_direction: MotorDir,
+    order: Option<Floor>,
+    state: State,
+}
+
+impl Elevator {
+    fn new() -> Self {
+        let elevator_io = ElevIo::new().expect("Init of HW failed");
+        elevator_io.set_motor_dir(MotorDir::Down);
+        let elevator = Elevator {
+            io: elevator_io,
+            current_direction: MotorDir::Stop,
+            order: None,
+            state: State::Idle,
+        };
+
+        return elevator;
+    }
+
+    fn set_state(&mut self, state: State) {
+        self.state = state;
+    }
+
+    // Transition Idle => DoorOpen
+    fn stop_and_open_doors(&mut self) {
+        self.state = State::DoorOpen;
+        self.io.set_motor_dir(MotorDir::Stop).unwrap();
+        self.io.set_door_light(Light::On).unwrap();
+    }
+
+    // Transition DoorOpen => Idle
+    fn close_doors(&mut self) {
+        self.state = State::Idle;
+        self.io.set_door_light(Light::Off).unwrap();
+    }
+
+    // Transition Idle => Idle
+    fn change_direction(&mut self) {
+        let new_direction = match self.current_direction {
+            MotorDir::Up => MotorDir::Down,
+            MotorDir::Down => MotorDir::Up,
+            _ => self.current_direction,
+        };
+
+        self.io.set_motor_dir(new_direction).unwrap();
+        self.current_direction = new_direction;
+    }
+
+    fn is_floor_ordered(&self) -> bool {
+        return true;
+    }
+}
+
+// State Machine
+enum State {
+    Idle,
+    Running,
+    DoorOpen
+}
+
+
+// State: Idle
+fn event_idle(floor: Floor) {
+
+}
 
 fn main() {
-    println!("Hello, world!");
-    let elev_io = ElevIo::new()
-        .expect("Init of HW failed");
+    let elevator = Elevator::new();
 
-    elev_io.set_motor_dir(MotorDir::Up)
-           .expect("Set MotorDir failed");
-
-    const SEC_TOP: usize = N_FLOORS - 1;
     loop {
-        match elev_io.get_floor_signal()
-                     .expect("Get FloorSignal failed") {
-            Floor::At(SEC_TOP) => elev_io.set_motor_dir(MotorDir::Down)
-                                         .expect("Set MotorDir failed"),
-            Floor::At(0) => elev_io.set_motor_dir(MotorDir::Up)
-                                   .expect("Set MotorDir Failed"),
-            _ => {}
-        }
 
-        if let Signal::High = elev_io.get_stop_signal()
+
+        /*if let Signal::High = elevator.get_stop_signal()
                                      .expect("Get StopSignal failed") {
-            elev_io.set_motor_dir(MotorDir::Stop)
+            elevator.set_motor_dir(MotorDir::Stop)
                    .expect("Set MotorDir failed");
             return;
-        }
+        } */
     }
 }
