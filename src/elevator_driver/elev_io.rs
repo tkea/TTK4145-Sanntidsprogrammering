@@ -54,9 +54,23 @@ impl Signal {
 const MOTOR_SPEED: usize = 2800;
 
 impl ElevIo {
+    fn initialize(&self) -> io::Result<()> {
+        // Drive elevator to known floor
+        self.set_motor_dir(MotorDir::Down)?;
+        while let Floor::At(floor_number) = self.get_floor_signal()? {
+            if floor_number == 0 {
+                break;
+            }
+        }
+        self.set_motor_dir(MotorDir::Stop)?;
+
+        Ok(())
+    }
+
     pub fn new() -> io::Result<Self> {
         let elev = ElevIo { io: HwIo::new()? };
         elev.set_all_light(Light::Off)?;
+        elev.initialize()?;
         elev.set_floor_light(Floor::At(0))?;
         Ok(elev)
     }
