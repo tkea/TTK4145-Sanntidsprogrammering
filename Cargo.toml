@@ -6,3 +6,5 @@ authors = [ "Tor K. E. Andreassen <tor.andreassen2@gmail.com>" ]
 
 [dependencies]
 libc = "0.2"
+chrono = "0.3"
+timer = "0.1"
