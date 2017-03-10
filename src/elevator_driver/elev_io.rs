@@ -59,7 +59,7 @@ impl ElevIo {
         self.set_motor_dir(MotorDir::Down)?;
         loop {
             match self.get_floor_signal()? {
-                Floor::At(0) => break,
+                Floor::At(_) => break,
                 _ => {},
             }
         }
