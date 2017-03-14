@@ -5,4 +5,12 @@ version = "0.1.0"
 authors = [ "Tor K. E. Andreassen <tor.andreassen2@gmail.com>" ]
 
 [dependencies]
+lazy_static = "0.1"
+serde = "0.8"
+serde_json = "0.8"
+serde_derive = "0.8"
+net2 = "0.2"
+chrono = "0.2"
+rand = "0.3"
+timer = "0.1"
 libc = "0.2"

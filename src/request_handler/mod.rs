@@ -1,4 +1,4 @@
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
-pub mod timer;
+pub mod request_handler;

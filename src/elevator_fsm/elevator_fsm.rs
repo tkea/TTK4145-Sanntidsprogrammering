@@ -2,8 +2,8 @@
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
 use elevator_driver::elev_io::*;
-use order_handler::order_handler::*;
-use timer::timer::*;
+use request_handler::request_handler::*;
+use door_timer::door_timer::*;
 
 
 enum State {
@@ -17,7 +17,7 @@ pub struct Elevator {
     pub io: ElevIo,
     current_direction: MotorDir,
     state: State,
-    order_handler: OrderHandler,
+    request_handler: OrderHandler,
     pub timer: Timer,
 }
 
@@ -26,7 +26,7 @@ impl Elevator {
 
     pub fn new() -> Self {
         let elevator_io = ElevIo::new().expect("Init of HW failed");
-        let order_handler = OrderHandler::new();
+        let request_handler = OrderHandler::new();
         let timer = Timer::new();
 
         elevator_io.set_motor_dir(MotorDir::Down);
@@ -35,7 +35,7 @@ impl Elevator {
             io: elevator_io,
             current_direction: MotorDir::Down,
             state: State::Idle,
-            order_handler: order_handler,
+            request_handler: request_handler,
             timer: timer,
         };
 
@@ -76,7 +76,7 @@ impl Elevator {
             Floor::Between => return,
         };
 
-        self.order_handler.clear_orders_here(current_floor, self.current_direction);
+        self.request_handler.clear_orders_here(current_floor, self.current_direction);
         self.clear_lights_at_floor(current_floor);
         self.io.set_door_light(Light::Off).unwrap();
     }
@@ -89,13 +89,13 @@ impl Elevator {
         };
 
         // orders in same direction, so continue
-        if self.order_handler.should_continue(current_floor, self.current_direction) {
+        if self.request_handler.should_continue(current_floor, self.current_direction) {
             self.io.set_motor_dir(self.current_direction);
             return;
         }
 
         // orders in oppsite direction, so change direction
-        if self.order_handler.should_change_direction(current_floor, self.current_direction) {
+        if self.request_handler.should_change_direction(current_floor, self.current_direction) {
             let opposite_direction = match self.current_direction {
                 MotorDir::Down => MotorDir::Up,
                 _ => MotorDir::Down
@@ -136,7 +136,7 @@ impl Elevator {
                 Floor::At(floor) => floor,
                 Floor::Between => return,
             };
-            if self.order_handler.should_stop(floor, self.current_direction) {
+            if self.request_handler.should_stop(floor, self.current_direction) {
                 self.state = State::DoorOpen;
                 self.stop_and_open_doors();
             } else {
@@ -147,7 +147,7 @@ impl Elevator {
 
 
     pub fn event_new_floor_order(&mut self, button: Button){
-        self.order_handler.new_floor_order(button);
+        self.request_handler.new_floor_order(button);
         self.io.set_button_light(button, Light::On);
     }
 
