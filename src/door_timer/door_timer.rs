@@ -13,8 +13,8 @@ pub struct Timer {
 impl Timer {
 
     pub fn new() -> Self {
-        let mut start_time = Instant::now();
-        let duration   = Duration::new(TIMER_DURATION,0);
+        let start_time = Instant::now();
+        let duration = Duration::new(TIMER_DURATION, 0);
 
         let timer = Timer {
             start_time: start_time,
@@ -33,4 +33,4 @@ impl Timer {
     pub fn timeout(&self) -> bool {
         return Instant::now() > self.start_time + self.duration;
     }
-} 
+}

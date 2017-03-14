@@ -17,7 +17,7 @@ pub struct Elevator {
     pub io: ElevIo,
     current_direction: MotorDir,
     state: State,
-    request_handler: OrderHandler,
+    pub request_handler: RequestHandler,
     pub timer: Timer,
 }
 
@@ -26,7 +26,7 @@ impl Elevator {
 
     pub fn new() -> Self {
         let elevator_io = ElevIo::new().expect("Init of HW failed");
-        let request_handler = OrderHandler::new();
+        let request_handler = RequestHandler::new();
         let timer = Timer::new();
 
         elevator_io.set_motor_dir(MotorDir::Down);
@@ -76,7 +76,7 @@ impl Elevator {
             Floor::Between => return,
         };
 
-        self.request_handler.clear_orders_here(current_floor, self.current_direction);
+        self.request_handler.announce_requests_cleared(current_floor, self.current_direction);
         self.clear_lights_at_floor(current_floor);
         self.io.set_door_light(Light::Off).unwrap();
     }
@@ -147,8 +147,8 @@ impl Elevator {
 
 
     pub fn event_new_floor_order(&mut self, button: Button){
-        self.request_handler.new_floor_order(button);
-        self.io.set_button_light(button, Light::On);
+        self.request_handler.announce_new_request(&button);
+        //self.io.set_button_light(button, Light::On);
     }
 
 

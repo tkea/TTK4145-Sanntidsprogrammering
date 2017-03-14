@@ -20,7 +20,7 @@ use network::localip::get_localip;
 use network::peer::{PeerTransmitter, PeerReceiver, PeerUpdate};
 use network::bcast::{BcastTransmitter, BcastReceiver};
 
-use elevator_driver::elev_io::{MotorDir};
+use elevator_driver::elev_io::{Floor, Button, MotorDir};
 
 use self::RequestStatus::*;
 
@@ -56,7 +56,7 @@ impl Default for RequestStatus {
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
-struct Request {
+pub struct Request {
     floor: usize,
     request_type: RequestType,
     status: RequestStatus,
@@ -101,8 +101,8 @@ impl Request {
     }
 }
 
-struct RequestHandler {
-    pub requests: Vec<Vec<Request>>,
+pub struct RequestHandler {
+    requests: Vec<Vec<Request>>,
     peers: Vec<String>,
 }
 
@@ -164,29 +164,34 @@ impl RequestHandler {
         }
     }
 
-    fn announce_request(&self, request: Request) {
-        unimplemented!()
+    fn announce_request(&self, request: &Request) {
+        //unimplemented!()
     }
 
-    pub fn announce_new_request(mut self, floor: usize, direction: MotorDir) {
-        unimplemented!()
+    pub fn announce_new_request(&mut self, button: &Button) {
+        let (request_type, floor) = match button {
+            &Button::Internal(Floor::At(floor))  => (RequestType::Internal,  floor),
+            &Button::CallUp(Floor::At(floor))    => (RequestType::CallUp,    floor),
+            &Button::CallDown(Floor::At(floor))  => (RequestType::CallDown,  floor),
+            _                                   => return,
+        };
+
+        let request = Request {
+            floor: floor,
+            request_type: RequestType::CallUp,
+            status: Pending,
+            ..Request::default()
+        };
+
+        self.announce_request(&request);
     }
 
     pub fn announce_requests_cleared(&self, floor: usize, direction: MotorDir) {
         // Clears the requests at a floor.
-        let internal_request = Request {
-            floor: floor,
-            request_type: RequestType::Internal,
-            status: Inactive,
-            ..Request::default()
-        };
-
-        self.announce_request(internal_request);
-
         let hall_request_type = match direction {
             MotorDir::Up    => RequestType::CallUp,
             MotorDir::Down  => RequestType::CallDown,
-            _               => return,
+            _               => unreachable!(),
         };
 
         let hall_request = Request {
@@ -196,19 +201,96 @@ impl RequestHandler {
             ..Request::default()
         };
 
-        self.announce_request(hall_request);
+        let internal_request = Request {
+            floor: floor,
+            request_type: RequestType::Internal,
+            status: Inactive,
+            ..Request::default()
+        };
+
+        self.announce_request(&internal_request);
+        self.announce_request(&hall_request);
     }
 
-    pub fn should_continue(&self, current_floor: usize, direction: MotorDir) {
-        unimplemented!()
+    pub fn should_continue(&self, floor: usize, direction: MotorDir) -> bool {
+        self.requests_in_direction(floor, direction)
     }
 
-    pub fn should_change_direction(&self, current_floor: usize, direction: MotorDir) {
-        unimplemented!()
+    pub fn should_change_direction(&self, floor: usize, direction: MotorDir) -> bool {
+        let opposite_direction = match direction {
+            MotorDir::Down  => MotorDir::Up,
+            MotorDir::Up    => MotorDir::Down,
+            _               => unreachable!(),
+        };
+
+        if self.requests_in_direction(floor, opposite_direction) {
+            return true;
+        }
+
+        // Handle edge case where current_floor == 0 || current_floor == top floor
+        let top_floor = N_FLOORS-1;
+        let is_at_top_or_bottom = floor == top_floor || floor == 0;
+
+        if is_at_top_or_bottom {
+            let request_opposite = match direction {
+                MotorDir::Up    => &self.requests[RequestType::CallDown as usize][floor],
+                MotorDir::Down  => &self.requests[RequestType::CallUp as usize][floor],
+                _               => unreachable!(),
+            };
+
+            if let Active = request_opposite.status {
+                return true;
+            }
+        }
+
+        false
     }
 
-    pub fn should_stop(&self, current_floor: usize, direction: MotorDir) {
-        unimplemented!()
+    pub fn should_stop(&self, floor: usize, direction: MotorDir) -> bool {
+        let internal_requests = &self.requests[RequestType::Internal as usize];
+
+        let hall_requests = match direction {
+            MotorDir::Up    => &self.requests[RequestType::CallUp as usize],
+            MotorDir::Down  => &self.requests[RequestType::CallDown as usize],
+            _               => unreachable!(),
+        };
+
+        let internal_is_requested = match internal_requests[floor].status {
+            Active  => true,
+            _       => false,
+        };
+
+        let hall_is_requested = match hall_requests[floor].status {
+            Active  => true,
+            _       => false,
+        };
+
+        let should_stop = internal_is_requested || hall_is_requested;
+
+        should_stop
+    }
+
+    fn requests_in_direction(&self, floor: usize, direction: MotorDir) -> bool {
+        let (lower_bound, num_elements) = match direction {
+            MotorDir::Down  => (0, floor),
+            MotorDir::Up    => (floor+1, N_FLOORS-floor+1),
+            _               => unreachable!(),
+        };
+
+        let requests_internal   = &self.requests[RequestType::Internal as usize];
+        let requests_up         = &self.requests[RequestType::CallUp as usize];
+        let requests_down       = &self.requests[RequestType::CallDown as usize];
+
+        let internal    = requests_internal .iter().skip(lower_bound).take(num_elements);
+        let up          = requests_up       .iter().skip(lower_bound).take(num_elements);
+        let down        = requests_down     .iter().skip(lower_bound).take(num_elements);
+
+        let mut orders = internal.chain(up).chain(down);
+
+        orders.any(|request| match request.status {
+            Active  => true,
+            _       => false,
+        })
     }
 
     fn calculate_cost(&self) {
