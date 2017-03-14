@@ -4,7 +4,7 @@
 use elevator_driver::elev_io::*;
 use request_handler::request_handler::*;
 use door_timer::door_timer::*;
-
+use std::rc::Rc;
 
 enum State {
     Idle,
@@ -24,9 +24,9 @@ pub struct Elevator {
 
 impl Elevator {
 
-    pub fn new() -> Self {
+    pub fn new(request_transmitter: Rc<RequestTransmitter>) -> Self {
         let elevator_io = ElevIo::new().expect("Init of HW failed");
-        let request_handler = RequestHandler::new();
+        let request_handler = RequestHandler::new(request_transmitter);
         let timer = Timer::new();
 
         elevator_io.set_motor_dir(MotorDir::Down);
@@ -62,7 +62,7 @@ impl Elevator {
         let external_button = match self.current_direction {
             MotorDir::Up => Button::CallUp(Floor::At(floor)),
             MotorDir::Down => Button::CallDown(Floor::At(floor)),
-            _ => return
+            _ => unreachable!()
         };
 
         self.io.set_button_light(internal_button, Light::Off);
