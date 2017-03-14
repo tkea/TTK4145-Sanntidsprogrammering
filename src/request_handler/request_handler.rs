@@ -11,15 +11,16 @@ use timer;
 
 use std::io;
 use std::thread;
-use std::sync::mpsc::channel;
-
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc;
+use std::sync::mpsc::{channel, Sender, Receiver};
 
 use rand::Rng;
 
 use network::localip::get_localip;
 use network::peer::{PeerTransmitter, PeerReceiver, PeerUpdate};
 use network::bcast::{BcastTransmitter, BcastReceiver};
+
+use elevator_driver::elev_io::{MotorDir};
 
 use self::RequestStatus::*;
 
@@ -137,7 +138,7 @@ impl RequestHandler {
         &mut self.requests[request_type][floor]
     }
 
-    pub fn merge_request(&mut self, remote_request: &Request, remote_ip: String) {
+    pub fn merge_incoming_request(&mut self, remote_request: &Request, remote_ip: String) {
         let peers = self.peers.clone();
 
         let ref mut local_request = self.get_local_request(&remote_request);
@@ -163,75 +164,119 @@ impl RequestHandler {
         }
     }
 
-    fn run(&mut self) -> (Receiver<PeerUpdate<String>>, Receiver<(Request, IP)>, Receiver<()>){
-        // Spawn listening threads and return receive channels.
-        let unique = rand::thread_rng().gen::<u16>();
+    fn announce_request(&self, request: Request) {
+        unimplemented!()
+    }
 
-        // Spawn peer transmitter and receiver
-        thread::spawn(move|| {
-            let id = format!("{}:{}", get_localip().unwrap(), unique);
-            PeerTransmitter::new(PEER_PORT)
-                .expect("Error creating PeerTransmitter")
-                .run(&id);
-        });
-        let (peer_tx, peer_rx) = channel::<PeerUpdate<String>>();
-        thread::spawn(move|| {
-            PeerReceiver::new(PEER_PORT)
-                .expect("Error creating PeerReceiver")
-                .run(peer_tx);
-        });
+    pub fn announce_new_request(mut self, floor: usize, direction: MotorDir) {
+        unimplemented!()
+    }
 
-        // Spawn broadcast transmitter and receiver
-        let (transmit_tx, transmit_rx) = channel::<Request>();
-        let (receive_tx, receive_rx) = channel::<(Request, IP)>();
-        thread::spawn(move|| {
-            BcastTransmitter::new(BCAST_PORT)
-                .expect("Error creating ")
-                .run(transmit_rx);
-        });
-        thread::spawn(move|| {
-            BcastReceiver::new(BCAST_PORT)
-                .expect("Error creating BcastReceiver")
-                .run(receive_tx);
-        });
+    pub fn announce_requests_cleared(&self, floor: usize, direction: MotorDir) {
+        // Clears the requests at a floor.
+        let internal_request = Request {
+            floor: floor,
+            request_type: RequestType::Internal,
+            status: Inactive,
+            ..Request::default()
+        };
 
-        // Broadcast all orders every 75 ms
-        let (timer_tx, timer_rx) = channel::<()>();
-        let timer = timer::Timer::new();
-        let timer_guard = timer.schedule_repeating(chrono::Duration::milliseconds(75), move ||{
-            timer_tx.send(()).unwrap();
-        });
-        timer_guard.ignore();
+        self.announce_request(internal_request);
 
-        // Start infinite loop waiting on either bcast msg or peer update
-        loop {
-            select! {
-                update_msg = peer_rx.recv() => {
-                    let update = update_msg.unwrap();
-                    println!("{}", update);
-                    self.handle_peer_update(update);
+        let hall_request_type = match direction {
+            MotorDir::Up    => RequestType::CallUp,
+            MotorDir::Down  => RequestType::CallDown,
+            _               => return,
+        };
 
-                },
-                bcast_msg = receive_rx.recv() => {
-                    let (message, ip) = bcast_msg.unwrap();
-                    println!("Got bcast_msg: {:?}", message);
+        let hall_request = Request {
+            floor: floor,
+            request_type: hall_request_type,
+            status: Inactive,
+            ..Request::default()
+        };
 
-                    self.merge_request(&message, ip);
-                },
-                _ = timer_rx.recv() => {
-                    for req_type in self.requests.iter() {
-                        for request in req_type.iter() {
-                            transmit_tx.send(request.clone()).unwrap();
-                        }
-                    }
+        self.announce_request(hall_request);
+    }
 
-                    self.print();
-                }
-            }
-        }
+    pub fn should_continue(&self, current_floor: usize, direction: MotorDir) {
+        unimplemented!()
+    }
+
+    pub fn should_change_direction(&self, current_floor: usize, direction: MotorDir) {
+        unimplemented!()
+    }
+
+    pub fn should_stop(&self, current_floor: usize, direction: MotorDir) {
+        unimplemented!()
+    }
+
+    fn calculate_cost(&self) {
+        unimplemented!()
+    }
+
+    fn local_is_minimal_cost(&self) {
+        unimplemented!()
     }
 }
 
+// RQT
+fn spawn_peer_thread(peer_tx: Sender<PeerUpdate<String>>) {
+    thread::spawn(move|| {
+        PeerReceiver::new(PEER_PORT)
+            .expect("Error creating PeerReceiver")
+            .run(peer_tx);
+    });
+}
+
+fn spawn_bcast_thread(transmit_rx: Receiver<Request>, receive_tx: Sender<(Request, IP)>) {
+    thread::spawn(move|| {
+        BcastTransmitter::new(BCAST_PORT)
+            .expect("Error creating ")
+            .run(transmit_rx);
+    });
+
+    thread::spawn(move|| {
+        BcastReceiver::new(BCAST_PORT)
+            .expect("Error creating BcastReceiver")
+            .run(receive_tx);
+    });
+}
+
+struct RequestTransmitter {
+    bcast_sender: Sender<Request>,
+    bcast_receiver: Receiver<(Request, IP)>,
+    peer_receiver: Receiver<PeerUpdate<IP>>,
+}
+
+impl RequestTransmitter {
+    pub fn new() -> Self {
+        let (peer_tx, peer_rx) = channel::<PeerUpdate<IP>>();
+        spawn_peer_thread(peer_tx);
+
+        let (bcast_transmitter_tx, bcast_transmitter_rx) = channel::<Request>();
+        let (bcast_receiver_tx, bcast_receiver_rx) = channel::<(Request, IP)>();
+        spawn_bcast_thread(bcast_transmitter_rx, bcast_receiver_tx);
+
+        RequestTransmitter {
+            bcast_sender: bcast_transmitter_tx,
+            bcast_receiver: bcast_receiver_rx,
+            peer_receiver: peer_rx,
+        }
+    }
+
+    pub fn announce_request(&self, request: Request) {
+        self.bcast_sender.send(request);
+    }
+
+    pub fn get_peers(&self) -> Result<PeerUpdate<IP>, mpsc::RecvError> {
+        self.peer_receiver.recv()
+    }
+
+    pub fn get_request(&self) -> Result<(Request, IP), mpsc::RecvError> {
+        self.bcast_receiver.recv()
+    }
+}
 
 /*
 use elevator_driver::elev_io::*;
