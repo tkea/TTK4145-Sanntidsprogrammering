@@ -1,6 +1,7 @@
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
+extern crate String;
 use elevator_driver::elev_io::*;
 
 pub struct OrderHandler {
@@ -33,7 +34,6 @@ impl OrderHandler {
 
     pub fn clear_orders_here(&mut self, floor: usize, direction: MotorDir) {
         self.orders_internal[floor] = false;
-
         match direction {
             MotorDir::Up => self.orders_up[floor] = false,
             MotorDir::Down => self.orders_down[floor] = false,
@@ -87,8 +87,7 @@ impl OrderHandler {
             return true;
         }
 
-        // Handle edge case
-        // where current_floor == 0 || current_floor == top floor
+        // Handle edge case where current_floor == 0 || current_floor == top floor
         let orders_opposite = match direction {
             MotorDir::Down => self.orders_up,
             _ => self.orders_down
@@ -110,8 +109,37 @@ impl OrderHandler {
     }
 
 
-    /*pub fn cost_function(&self, floor: usize, direction: MotorDir, other_floors: [usize, ], other_directions: [usize, ]) {
+    pub fn local_is_minimal_cost(&self, ordered_floor: usize, floor: usize, direction: MotorDir,
+                           other_floors: [usize; 2], other_directions: [MotorDir; 2]) -> bool{      //TODO length of arrays must be NUM_elevators
 
-    }*/
+        let local_cost = self.calculate_cost(ordered_floor, floor, direction);
+
+        let min_extern_cost = 2 * N_FLOORS; // initialized to max-value of the cost function
+        for index in 0..2 {                                                                         //TODO length of arrays must be NUM_elevators
+            let extern_cost = self.calculate_cost(
+                ordered_floor, other_floors[index], other_directions[index]);
+            let min_extern_cost = if extern_cost < min_extern_cost {extern_cost} else {2*N_FLOORS};
+        }
+
+        if local_cost < min_extern_cost { return true; }
+        else if local_cost == min_extern_cost { return true;  }                                     // TODO lowest IP takes the order
+        else { return false; }
+    }
+
+    pub fn calculate_cost(&self, ordered_floor: usize, floor: usize, direction: MotorDir) -> usize{
+        // calculate the distance_cost: difference between ordered_floor and current_floor
+        let distance_cost = (ordered_floor as isize) - (floor as isize);
+        let distance_cost = if distance_cost < 0 { distance_cost * -1 } else { distance_cost };
+
+        // calculate the direction_cost: N_FLOORS if the order is in the opposite direction
+        let elevator_direction = match direction {
+            MotorDir::Down => 0,
+            _ => 1,
+        };
+        let order_direction = if (ordered_floor as isize) - (floor as isize) < 0 { 0 } else {1};
+        let direction_cost = if elevator_direction == order_direction {0} else {N_FLOORS};
+
+        return (distance_cost as usize) + (direction_cost as usize);
+    }
 
 }

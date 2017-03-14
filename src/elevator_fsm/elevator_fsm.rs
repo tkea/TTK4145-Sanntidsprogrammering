@@ -1,15 +1,11 @@
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
-// Timer test
-use std::time::{Duration, Instant}; //
-
 use elevator_driver::elev_io::*;
 use order_handler::order_handler::*;
+use timer::timer::*;
 
 
-
-// State
 enum State {
     Idle,
     Running,
@@ -17,21 +13,21 @@ enum State {
 }
 
 
-// ElevatorData...
 pub struct Elevator {
     pub io: ElevIo,
     current_direction: MotorDir,
     state: State,
     order_handler: OrderHandler,
+    pub timer: Timer,
 }
 
 
 impl Elevator {
+
     pub fn new() -> Self {
         let elevator_io = ElevIo::new().expect("Init of HW failed");
-        let mut order_handler = OrderHandler::new();
-        let mut now = Instant::now();
-        let mut sec = Duration::new(3,0);
+        let order_handler = OrderHandler::new();
+        let timer = Timer::new();
 
         elevator_io.set_motor_dir(MotorDir::Down);
 
@@ -40,52 +36,41 @@ impl Elevator {
             current_direction: MotorDir::Down,
             state: State::Idle,
             order_handler: order_handler,
-            now: now,
-            sec: sec,
+            timer: timer,
         };
 
         return elevator;
     }
 
-    pub fn timer_timeout(&self) -> bool {
-        if Instant::now() - self.now > self.sec { return true; } else { return false; }
-    }
 
-
+//////////////////////////////////// ELEVATOR FUNCTIONS //////////////////////////////////////////
 
     fn get_current_floor(&self) -> Floor {
         return self.io.get_floor_signal().unwrap();
     }
 
 
-    // Transition Idle => DoorOpen
-    pub fn stop_and_open_doors(&mut self) /*-> Receiver*/ {
-        self.state = State::DoorOpen;
+    fn stop_and_open_doors(&mut self) {
         self.io.set_motor_dir(MotorDir::Stop).unwrap();
         self.io.set_door_light(Light::On).unwrap();
-
-        self.now = Instant::now();
-
-        //self.state = State::Idle;
-        //self.close_doors();
+        self.timer.start();
     }
 
 
-    pub fn clear_lights_at_floor(&mut self, floor: usize){
-        // Turn off order lights
+    fn clear_lights_at_floor(&mut self, floor: usize){
         let internal_button = Button::Internal(Floor::At(floor));
         let external_button = match self.current_direction {
             MotorDir::Up => Button::CallUp(Floor::At(floor)),
             MotorDir::Down => Button::CallDown(Floor::At(floor)),
             _ => return
         };
+
         self.io.set_button_light(internal_button, Light::Off);
         self.io.set_button_light(external_button, Light::Off);
     }
 
 
-    // Transition DoorOpen => Idle
-    pub fn close_doors(&mut self) {
+    fn close_doors(&mut self) {
         let current_floor = match self.get_current_floor() {
             Floor::At(floor) => floor,
             Floor::Between => return,
@@ -94,23 +79,22 @@ impl Elevator {
         self.order_handler.clear_orders_here(current_floor, self.current_direction);
         self.clear_lights_at_floor(current_floor);
         self.io.set_door_light(Light::Off).unwrap();
-
-        self.state = State::Idle;
     }
 
 
-    // continue, stop or change direction
-    pub fn set_direction(&mut self) {
+    fn set_direction(&mut self) {
         let current_floor = match self.get_current_floor() {
             Floor::At(floor) => floor,
             Floor::Between => return,
         };
 
+        // orders in same direction, so continue
         if self.order_handler.should_continue(current_floor, self.current_direction) {
             self.io.set_motor_dir(self.current_direction);
             return;
         }
 
+        // orders in oppsite direction, so change direction
         if self.order_handler.should_change_direction(current_floor, self.current_direction) {
             let opposite_direction = match self.current_direction {
                 MotorDir::Down => MotorDir::Up,
@@ -122,7 +106,7 @@ impl Elevator {
             return;
         }
 
-        // No orders in any direction, so stop
+        // no orders in any direction, so stop
         self.io.set_motor_dir(MotorDir::Stop);
     }
 
@@ -132,6 +116,8 @@ impl Elevator {
     }
 
 
+/////////////////////////////////////// FSM EVENTS ///////////////////////////////////////////////
+
     pub fn event_running(&mut self) {
         if let State::Idle = self.state {
             self.state = State::Running;
@@ -139,7 +125,6 @@ impl Elevator {
     }
 
 
-    // State: Idle
     pub fn event_at_floor(&mut self) {
         if let State::Running = self.state {
             self.state = State::Idle;
@@ -169,19 +154,8 @@ impl Elevator {
 
     pub fn event_doors_should_close(&mut self) {
         if let State::DoorOpen = self.state {
+            self.state = State::Idle;
             self.close_doors();
         }
-    }
-}
-
-
-pub struct Timer {
-    now: Instant,
-    sec: Duration,
-}
-
-impl Elevator {
-    pub fn new() -> Self {
-        
     }
 }

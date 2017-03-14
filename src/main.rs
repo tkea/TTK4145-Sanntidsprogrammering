@@ -2,15 +2,52 @@
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
 extern crate elevator;
-
-use std::thread;
 use elevator::elevator_driver::elev_io::*;
 use elevator::elevator_fsm::elevator_fsm::*;
 
+// using Kjetil Kjeka's example for process pair, modified to suit our problem
+use std::fs::{File, OpenOptions};
+use std::io;
+use std::io::prelude::*;
+use std::time::{SystemTime, Duration};
+use std::thread;
+use std::str::*;
+use std::process::Command;
+use std::env::args;
+const FILEPATH: &'static str = "backup_data.txt";
+const TIMEOUT_MS: u64 = 3000;
+const PERIOD_MS: u64 = 1000;
+
+
+
 fn main() {
+    // backup waits for primary to die
+    println!("I'm backup");
+    let mut file = OpenOptions::new().read(true).write(true).create(true).open(FILEPATH).unwrap();
+    while {SystemTime::now().duration_since(file.metadata().unwrap().modified().unwrap()).unwrap() <= Duration::from_millis(TIMEOUT_MS)} {}
+    println!("Can't find primary");
+    let mut file_source = FILEPATH;
+    println!("The source is: \"{}\"", file_source);
+                                                                                                    // TODO read the backup data from the txt-file
+    println!("Spawning the backup");
+    let backup_spawning_command = Command::new("gnome-terminal").arg("-x").arg(args().nth(0).unwrap()).spawn();
+    println!("I'm the primary now");
+
+    // backup thread
+    thread::spawn(move || {
+        loop {
+            file.set_len(0);
+            file.seek(io::SeekFrom::Start(0));
+            file.write_fmt(format_args!("Her skal det skrives inn heisbestillinger."));             // TODO save the backup data to the txt-file
+            thread::sleep(Duration::from_millis(PERIOD_MS));
+        }
+    });
+
+    // primary loop
     let mut elevator = Elevator::new();
-    //event_new_floor_order(&mut elevator, Button::Internal(Floor::At(2)));
+
     loop {
+
         if let Floor::At(floor) = elevator.io.get_floor_signal().unwrap() {
             elevator.event_at_floor();
         } else {
@@ -48,7 +85,8 @@ fn main() {
             return;
         }
 
-        if elevator.timer_timeout() { elevator.event_doors_should_close(); }
+        if elevator.timer.timeout() { elevator.event_doors_should_close(); }
 
     }
+
 }
