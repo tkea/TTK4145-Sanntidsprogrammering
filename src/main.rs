@@ -3,13 +3,13 @@
 
 extern crate elevator;
 
+use std::thread;
 use elevator::elevator_driver::elev_io::*;
 use elevator::elevator_fsm::elevator_fsm::*;
 
 fn main() {
     let mut elevator = Elevator::new();
     //event_new_floor_order(&mut elevator, Button::Internal(Floor::At(2)));
-
     loop {
         if let Floor::At(floor) = elevator.io.get_floor_signal().unwrap() {
             elevator.event_at_floor();
@@ -47,5 +47,8 @@ fn main() {
                    .expect("Set MotorDir failed");
             return;
         }
+
+        if elevator.timer_timeout() { elevator.event_doors_should_close(); }
+
     }
 }

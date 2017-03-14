@@ -1,12 +1,12 @@
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
-
-extern crate timer;
-extern crate chrono;
+// Timer test
+use std::time::{Duration, Instant}; //
 
 use elevator_driver::elev_io::*;
 use order_handler::order_handler::*;
+
 
 
 // State
@@ -30,16 +30,28 @@ impl Elevator {
     pub fn new() -> Self {
         let elevator_io = ElevIo::new().expect("Init of HW failed");
         let mut order_handler = OrderHandler::new();
+        let mut now = Instant::now();
+        let mut sec = Duration::new(3,0);
+
         elevator_io.set_motor_dir(MotorDir::Down);
+
         let elevator = Elevator {
             io: elevator_io,
             current_direction: MotorDir::Down,
             state: State::Idle,
             order_handler: order_handler,
+            now: now,
+            sec: sec,
         };
 
         return elevator;
     }
+
+    pub fn timer_timeout(&self) -> bool {
+        if Instant::now() - self.now > self.sec { return true; } else { return false; }
+    }
+
+
 
     fn get_current_floor(&self) -> Floor {
         return self.io.get_floor_signal().unwrap();
@@ -52,16 +64,10 @@ impl Elevator {
         self.io.set_motor_dir(MotorDir::Stop).unwrap();
         self.io.set_door_light(Light::On).unwrap();
 
-        /*let timer = timer::Timer::new();
-        let (tx, rx) = channel();
-        self._guard = timer.schedule_with_delay(chrono::Duration::seconds(3),
-            move|| {
-                tx.send(());
-            });
-        rx*/
+        self.now = Instant::now();
 
-        self.state = State::Idle;
-        self.close_doors();
+        //self.state = State::Idle;
+        //self.close_doors();
     }
 
 
@@ -163,7 +169,19 @@ impl Elevator {
 
     pub fn event_doors_should_close(&mut self) {
         if let State::DoorOpen = self.state {
-            self.state = State::Idle;
+            self.close_doors();
         }
+    }
+}
+
+
+pub struct Timer {
+    now: Instant,
+    sec: Duration,
+}
+
+impl Elevator {
+    pub fn new() -> Self {
+        
     }
 }
