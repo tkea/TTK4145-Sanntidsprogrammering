@@ -3,18 +3,33 @@
 
 #![feature(mpsc_select)]
 
+extern crate chrono;
+extern crate timer;
+
 extern crate elevator;
 use elevator::elevator_driver::elev_io::*;
 use elevator::elevator_fsm::elevator_fsm::*;
 
 use std::sync::mpsc::channel;
-extern crate chrono;
-extern crate timer;
-use elevator::request_handler::*;
 use elevator::request_handler::request_transmitter::*;
 use elevator::request_handler::request_transmitter::BroadcastMessage;
 use std::rc::Rc;
 
+use std::env;
+use std::process::Command;
+
+fn spawn_backup() {
+    let args = env::args();
+    if args.len() != 1 {
+        let mut child = Command::new("cargo")
+                            .arg("run -- main")
+                            .spawn()
+                            .unwrap();
+
+        println!("im a backup");
+        child.wait().unwrap();
+    }
+}
 
 fn main() {
     let request_transmitter: Rc<RequestTransmitter> = Rc::new(
@@ -27,7 +42,7 @@ fn main() {
 
     loop {
 
-        if let Floor::At(floor) = elevator.io.get_floor_signal().unwrap() {
+        if let Floor::At(_) = elevator.io.get_floor_signal().unwrap() {
             elevator.event_at_floor();
         } else {
             elevator.event_running();
@@ -76,19 +91,15 @@ fn main() {
         let (timer_tx, timer_rx) = channel::<()>();
 
         let timer = timer::Timer::new();
-        let timer_guard = timer.schedule_repeating(chrono::Duration::milliseconds(300), move|| {
+        let timer_guard = timer.schedule_repeating(chrono::Duration::milliseconds(150), move|| {
             timer_tx.send(());
         });
-
-
         timer_guard.ignore();
 
         select! {
             update_msg = peer_rx.recv() => {
                 let update = update_msg.unwrap();
-                println!("{}", update);
                 elevator.request_handler.handle_peer_update(update);
-
             },
             bcast_msg = request_rx.recv() => {
                 let (message, remote_ip) = bcast_msg.unwrap();

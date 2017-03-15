@@ -27,7 +27,6 @@ pub struct Elevator {
 
 
 impl Elevator {
-
     pub fn new(request_transmitter: Rc<RequestTransmitter>) -> Self {
         let elevator_io = ElevIo::new().expect("Init of HW failed");
         let request_handler = RequestHandler::new(request_transmitter);
@@ -53,9 +52,6 @@ impl Elevator {
 
         return elevator;
     }
-
-
-//////////////////////////////////// ELEVATOR FUNCTIONS //////////////////////////////////////////
 
     fn get_current_floor(&self) -> Floor {
         return self.io.get_floor_signal().unwrap();
@@ -117,7 +113,6 @@ impl Elevator {
                 _               => unreachable!(),
             };
 
-            //self.io.set_motor_dir(opposite_direction);
             self.current_direction = opposite_direction;
             return;
         }
@@ -131,8 +126,6 @@ impl Elevator {
         self.io.set_floor_light(self.io.get_floor_signal().unwrap());
     }
 
-
-/////////////////////////////////////// FSM EVENTS ///////////////////////////////////////////////
 
     pub fn event_running(&mut self) {
         if let State::Idle = self.state {
