@@ -337,16 +337,32 @@ impl RequestHandler {
     fn request_is_assigned_locally(&self, request: &Request, local_position: usize) -> bool {
         let local_cost = self.calculate_cost(&request, local_position);
 
-
+        let local_ip = &get_localip().unwrap().to_string();
+        let mut min_peer_ip = &get_localip().unwrap().to_string();
         let mut min_peer_cost = 2*N_FLOORS;
 
-        for (_, position) in &self.peer_positions {
+        for (peer, position) in &self.peer_positions {
             let cost = self.calculate_cost(&request, *position);
             if cost < min_peer_cost {
+                min_peer_ip = &peer;
                 min_peer_cost = cost;
             }
         }
-        println!("local cost {:?} minpeer {:?}", local_cost, min_peer_cost);
+
+        if local_cost == min_peer_cost {
+            let ip_to_cost = |ip: &IP| {
+                ip
+                    .split(":").next().unwrap()
+                    .split(".").skip(3).take(1).next().unwrap()
+                    .to_string()
+            };
+
+            let local = ip_to_cost(local_ip);
+            let remote = ip_to_cost(min_peer_ip);
+
+            return local <= remote;
+        }
+
         local_cost <= min_peer_cost
     }
 
