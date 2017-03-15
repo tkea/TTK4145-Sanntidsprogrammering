@@ -357,8 +357,8 @@ impl RequestHandler {
                     .to_string()
             };
 
-            let local = ip_to_cost(local_ip);
-            let remote = ip_to_cost(min_peer_ip);
+            let local: i32 = str::parse(&ip_to_cost(local_ip)).unwrap();
+            let remote: i32 = str::parse(&ip_to_cost(min_peer_ip)).unwrap();
 
             return local <= remote;
         }
