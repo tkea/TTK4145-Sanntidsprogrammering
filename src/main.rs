@@ -11,13 +11,14 @@ use std::sync::mpsc::channel;
 extern crate chrono;
 extern crate timer;
 use elevator::request_handler::*;
-use elevator::request_handler::request_handler::BroadcastMessage;
+use elevator::request_handler::request_transmitter::*;
+use elevator::request_handler::request_transmitter::BroadcastMessage;
 use std::rc::Rc;
 
 
 fn main() {
-    let request_transmitter: Rc<request_handler::RequestTransmitter> = Rc::new(
-        request_handler::RequestTransmitter::new()
+    let request_transmitter: Rc<RequestTransmitter> = Rc::new(
+        RequestTransmitter::new()
     );
     let mut elevator = Elevator::new(request_transmitter.clone());
 

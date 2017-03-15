@@ -4,109 +4,22 @@
 #![feature(type_ascription)]
 
 use rand;
+use rand::Rng;
 
-use std::thread;
+use std::rc::Rc;
+use std::collections::HashMap;
 use std::sync::mpsc::{channel, Sender, Receiver};
 
-use rand::Rng;
+use elevator_driver::elev_io::{N_FLOORS, Floor, Button, MotorDir, Light};
 
 use network::localip::get_localip;
 use network::peer::{PeerTransmitter, PeerReceiver, PeerUpdate};
 use network::bcast::{BcastTransmitter, BcastReceiver};
 
-use std::collections::HashMap;
+use request_handler::request::*;
+use request_handler::request::RequestStatus::*;
+use request_handler::request_transmitter::*;
 
-use elevator_driver::elev_io::{Floor, Button, MotorDir, Light};
-use std::rc::Rc;
-use self::RequestStatus::*;
-
-const PEER_PORT: u16 = 9877;
-const BCAST_PORT: u16 = 9876;
-
-const N_FLOORS: usize = 4;
-
-type IP = String;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum BroadcastMessage {
-    RequestMessage(Request),
-    Position(usize),
-}
-
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
-pub enum RequestType {
-    Internal = 2,
-    CallUp = 1,
-    CallDown = 0,
-}
-
-impl Default for RequestType {
-    fn default() -> RequestType { RequestType::CallUp }
-}
-
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
-enum RequestStatus {
-    Active,
-    Pending,
-    Inactive,
-    Unknown
-}
-
-impl Default for RequestStatus {
-    fn default() -> RequestStatus { RequestStatus::Unknown }
-}
-
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct Request {
-    pub floor: usize,
-    pub request_type: RequestType,
-    status: RequestStatus,
-    acknowledged_by: Vec<IP>,
-}
-
-impl Request {
-    fn move_to_active(&mut self) -> RequestStatus {
-        self.status = Active;
-        Active
-    }
-
-    fn move_to_pending(&mut self) -> RequestStatus {
-        self.status = Pending;
-        Pending
-    }
-
-    fn move_to_inactive(&mut self) -> RequestStatus {
-        self.status = Inactive;
-        Inactive
-    }
-
-    fn handle_unknown_local(&mut self, remote: &Request) -> RequestStatus {
-        self.floor = remote.floor;
-        self.request_type = remote.request_type;
-        self.status = remote.status;
-        self.acknowledged_by = remote.acknowledged_by.clone();
-
-        self.status
-    }
-
-    fn update_acknowledgements(&mut self, peers: &Vec<String>, remote_ip: String) -> RequestStatus {
-        let ref mut acknowledged_by = self.acknowledged_by;
-        acknowledged_by.push(remote_ip);
-        acknowledged_by.sort();
-        acknowledged_by.dedup();
-
-        // If all elevators have acknowledged, upgrade the request to active.
-        for addr in peers.iter() {
-            let ip = addr.split(":").next().unwrap().to_string();
-            if !acknowledged_by.contains(&ip) {
-                return Pending;
-            }
-        }
-
-        self.status = Active;
-        Active
-    }
-}
 
 pub struct RequestHandler {
     requests: Vec<Vec<Request>>,
@@ -161,6 +74,10 @@ impl RequestHandler {
         let request_type = remote_request.request_type as usize;
 
         &mut self.requests[request_type][floor]
+    }
+
+    pub fn get_internal_requests(&self) -> Vec<Request> {
+        self.requests[RequestType::Internal as usize].clone()
     }
 
     pub fn merge_incoming_request(&mut self, remote_request: &Request, remote_ip: IP) -> Option<Light> {
@@ -243,6 +160,15 @@ impl RequestHandler {
         self.announce_request(hall_request);
     }
 
+    pub fn announce_all_requests(&mut self) {
+        let call_up = &self.requests[RequestType::CallUp as usize];
+        let call_down = &self.requests[RequestType::CallDown as usize];
+
+        for request in call_up.iter().chain(call_down.iter()) {
+            self.request_transmitter.announce_request(request.clone());
+        }
+    }
+
     pub fn should_continue(&self, floor: usize, direction: MotorDir) -> bool {
         self.requests_in_direction(floor, direction)
     }
@@ -313,9 +239,8 @@ impl RequestHandler {
         let u_iter = requests_up       .iter().skip(lower_bound).take(num_elements);
         let d_iter = requests_down     .iter().skip(lower_bound).take(num_elements);
 
-        let mut requests = i_iter.chain(u_iter).chain(d_iter);
+        let requests = i_iter.chain(u_iter).chain(d_iter);
 
-        //requests.any(|request| self.request_is_ordered(&request))
         requests
             .filter(|request| self.request_is_ordered(&request))
             .filter(|request| self.request_is_assigned_locally(&request, floor))
@@ -371,74 +296,5 @@ impl RequestHandler {
         }
 
         local_cost <= min_peer_cost
-    }
-
-    pub fn announce_all_requests(&mut self) {
-        let call_up = &self.requests[RequestType::CallUp as usize];
-        let call_down = &self.requests[RequestType::CallDown as usize];
-
-        for request in call_up.iter().chain(call_down.iter()) {
-            self.request_transmitter.announce_request(request.clone());
-        }
-    }
-}
-
-// RQT
-fn spawn_peer_update_threads(peer_tx: Sender<PeerUpdate<String>>) {
-    let unique = rand::thread_rng().gen::<u16>();
-
-    thread::spawn(move|| {
-        let id = format!("{}:{}", get_localip().unwrap(), unique);
-        PeerTransmitter::new(PEER_PORT)
-            .expect("Error creating PeerTransmitter")
-            .run(&id);
-    });
-
-    thread::spawn(move|| {
-        PeerReceiver::new(PEER_PORT)
-            .expect("Error creating PeerReceiver")
-            .run(peer_tx);
-    });
-}
-
-fn spawn_bcast_threads(transmit_rx: Receiver<BroadcastMessage>, receive_tx: Sender<(BroadcastMessage, IP)>) {
-    thread::spawn(move|| {
-        BcastTransmitter::new(BCAST_PORT)
-            .expect("Error creating ")
-            .run(transmit_rx);
-    });
-
-    thread::spawn(move|| {
-        BcastReceiver::new(BCAST_PORT)
-            .expect("Error creating BcastReceiver")
-            .run(receive_tx);
-    });
-}
-
-pub struct RequestTransmitter {
-    pub bcast_sender: Sender<BroadcastMessage>,
-    pub bcast_receiver: Receiver<(BroadcastMessage, IP)>,
-    pub peer_receiver: Receiver<PeerUpdate<IP>>,
-}
-
-impl RequestTransmitter {
-    pub fn new() -> Self {
-        let (peer_tx, peer_rx) = channel::<PeerUpdate<IP>>();
-        spawn_peer_update_threads(peer_tx);
-
-        let (bcast_transmitter_tx, bcast_transmitter_rx) = channel::<BroadcastMessage>();
-        let (bcast_receiver_tx, bcast_receiver_rx) = channel::<(BroadcastMessage, IP)>();
-        spawn_bcast_threads(bcast_transmitter_rx, bcast_receiver_tx);
-
-        RequestTransmitter {
-            bcast_sender: bcast_transmitter_tx,
-            bcast_receiver: bcast_receiver_rx,
-            peer_receiver: peer_rx,
-        }
-    }
-
-    pub fn announce_request(&self, request: Request) {
-        self.bcast_sender.send(BroadcastMessage::RequestMessage(request))
-            .expect("Could not announce request");
     }
 }

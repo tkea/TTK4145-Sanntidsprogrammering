@@ -1,10 +1,12 @@
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
+use std::rc::Rc;
 use elevator_driver::elev_io::*;
+use request_handler::request::*;
+use request_handler::request_transmitter::*;
 use request_handler::request_handler::*;
 use elevator_timer::elevator_timer::*;
-use std::rc::Rc;
 
 enum State {
     Idle,
