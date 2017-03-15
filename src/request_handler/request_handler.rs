@@ -3,12 +3,9 @@
 
 #![feature(type_ascription)]
 
-#![macro_use]
-use serde_derive;
 use rand;
 
 use std::thread;
-use std::sync::mpsc;
 use std::sync::mpsc::{channel, Sender, Receiver};
 
 use rand::Rng;
@@ -16,6 +13,8 @@ use rand::Rng;
 use network::localip::get_localip;
 use network::peer::{PeerTransmitter, PeerReceiver, PeerUpdate};
 use network::bcast::{BcastTransmitter, BcastReceiver};
+
+use std::collections::HashMap;
 
 use elevator_driver::elev_io::{Floor, Button, MotorDir, Light};
 use std::rc::Rc;
@@ -27,7 +26,12 @@ const BCAST_PORT: u16 = 9876;
 const N_FLOORS: usize = 4;
 
 type IP = String;
-type ElevatorID = IP;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum BroadcastMessage {
+    RequestMessage(Request),
+    Position(usize),
+}
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub enum RequestType {
@@ -57,7 +61,7 @@ pub struct Request {
     pub floor: usize,
     pub request_type: RequestType,
     status: RequestStatus,
-    acknowledged_by: Vec<ElevatorID>,
+    acknowledged_by: Vec<IP>,
 }
 
 impl Request {
@@ -107,6 +111,7 @@ impl Request {
 pub struct RequestHandler {
     requests: Vec<Vec<Request>>,
     peers: Vec<String>,
+    peer_positions: HashMap<IP, usize>,
     request_transmitter: Rc<RequestTransmitter>,
 }
 
@@ -128,12 +133,27 @@ impl RequestHandler {
         RequestHandler {
             requests: requests,
             peers: Vec::new(),
+            peer_positions: HashMap::new(),
             request_transmitter: request_transmitter,
         }
     }
 
     pub fn handle_peer_update(&mut self, peers: PeerUpdate<String>) {
         self.peers = peers.peers;
+
+        for peer_addr in peers.lost {
+            let ip = peer_addr.split(":").next().unwrap().to_string();
+            self.peer_positions.remove(&ip);
+        }
+
+        if let Some(peer_addr) = peers.new {
+            let ip = peer_addr.split(":").next().unwrap().to_string();
+            self.peer_positions.insert(ip, 0);
+        }
+    }
+
+    pub fn handle_position_update(&mut self, remote_ip: IP, position: usize) {
+        self.peer_positions.insert(remote_ip, position);
     }
 
     fn get_local_request(&mut self, remote_request: &Request) -> &mut Request {
@@ -143,7 +163,7 @@ impl RequestHandler {
         &mut self.requests[request_type][floor]
     }
 
-    pub fn merge_incoming_request(&mut self, remote_request: &Request, remote_ip: String) -> Option<Light> {
+    pub fn merge_incoming_request(&mut self, remote_request: &Request, remote_ip: IP) -> Option<Light> {
         let peers = self.peers.clone();
 
         let ref mut local_request = self.get_local_request(&remote_request);
@@ -160,18 +180,11 @@ impl RequestHandler {
             _                   => return None,
         };
 
+        // The return value determines if the button light needs to be turned on.
         match (local_status, new_status) {
-            (Pending, Active)  => return Some(Light::On),
+            (Pending, Active)   => return Some(Light::On),
             (Active, Inactive)  => return Some(Light::Off),
             _                   => return None,
-        }
-    }
-
-    pub fn print(&self) {
-        for req_type in self.requests.iter() {
-            for request in req_type.iter() {
-                println!("{:?}", request);
-            }
         }
     }
 
@@ -279,39 +292,61 @@ impl RequestHandler {
     }
 
     fn requests_in_direction(&self, floor: usize, direction: MotorDir) -> bool {
+        let requests_internal   = &self.requests[RequestType::Internal as usize];
+        let requests_up         = &self.requests[RequestType::CallUp as usize];
+        let requests_down       = &self.requests[RequestType::CallDown as usize];
+
         let (lower_bound, num_elements) = match direction {
             MotorDir::Down  => (0, floor),
             MotorDir::Up    => (floor+1, N_FLOORS-floor+1),
             _               => unreachable!(),
         };
 
-        let requests_internal   = &self.requests[RequestType::Internal as usize];
-        let requests_up         = &self.requests[RequestType::CallUp as usize];
-        let requests_down       = &self.requests[RequestType::CallDown as usize];
+        let i_iter = requests_internal .iter().skip(lower_bound).take(num_elements);
+        let u_iter = requests_up       .iter().skip(lower_bound).take(num_elements);
+        let d_iter = requests_down     .iter().skip(lower_bound).take(num_elements);
 
-        let internal    = requests_internal .iter().skip(lower_bound).take(num_elements);
-        let up          = requests_up       .iter().skip(lower_bound).take(num_elements);
-        let down        = requests_down     .iter().skip(lower_bound).take(num_elements);
+        let mut requests = i_iter.chain(u_iter).chain(d_iter);
 
-        let mut orders = internal.chain(up).chain(down);
+        //requests.any(|request| self.request_is_ordered(&request))
+        requests
+            .filter(|request| self.request_is_ordered(&request))
+            .filter(|request| self.request_is_assigned_locally(&request, floor))
+            .count() > 0
+    }
 
-        let is_ordered = |request: &Request| {
-            if let Active = request.status {
-                return true;
-            } else {
-                return false;
+    fn request_is_ordered(&self, request: &Request) -> bool {
+        if let Active = request.status {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    fn calculate_cost(&self, request: &Request, position: usize) -> usize {
+        let cost = (request.floor as isize) - (position as isize);
+
+        if cost < 0 {
+            return (cost*-1) as usize;
+        }
+
+        return cost as usize;
+    }
+
+    fn request_is_assigned_locally(&self, request: &Request, local_position: usize) -> bool {
+        let local_cost = self.calculate_cost(&request, local_position);
+
+
+        let mut min_peer_cost = 2*N_FLOORS;
+
+        for (_, position) in &self.peer_positions {
+            let cost = self.calculate_cost(&request, *position);
+            if cost < min_peer_cost {
+                min_peer_cost = cost;
             }
-        };
+        }
 
-        orders.any(is_ordered)
-    }
-
-    fn calculate_cost(&self) {
-        unimplemented!()
-    }
-
-    fn local_is_minimal_cost(&self) {
-        unimplemented!()
+        local_cost <= min_peer_cost
     }
 
     pub fn announce_all_requests(&self) {
@@ -341,7 +376,7 @@ fn spawn_peer_update_threads(peer_tx: Sender<PeerUpdate<String>>) {
     });
 }
 
-fn spawn_bcast_threads(transmit_rx: Receiver<Request>, receive_tx: Sender<(Request, IP)>) {
+fn spawn_bcast_threads(transmit_rx: Receiver<BroadcastMessage>, receive_tx: Sender<(BroadcastMessage, IP)>) {
     thread::spawn(move|| {
         BcastTransmitter::new(BCAST_PORT)
             .expect("Error creating ")
@@ -356,8 +391,8 @@ fn spawn_bcast_threads(transmit_rx: Receiver<Request>, receive_tx: Sender<(Reque
 }
 
 pub struct RequestTransmitter {
-    bcast_sender: Sender<Request>,
-    pub bcast_receiver: Receiver<(Request, IP)>,
+    bcast_sender: Sender<BroadcastMessage>,
+    pub bcast_receiver: Receiver<(BroadcastMessage, IP)>,
     pub peer_receiver: Receiver<PeerUpdate<IP>>,
 }
 
@@ -366,8 +401,8 @@ impl RequestTransmitter {
         let (peer_tx, peer_rx) = channel::<PeerUpdate<IP>>();
         spawn_peer_update_threads(peer_tx);
 
-        let (bcast_transmitter_tx, bcast_transmitter_rx) = channel::<Request>();
-        let (bcast_receiver_tx, bcast_receiver_rx) = channel::<(Request, IP)>();
+        let (bcast_transmitter_tx, bcast_transmitter_rx) = channel::<BroadcastMessage>();
+        let (bcast_receiver_tx, bcast_receiver_rx) = channel::<(BroadcastMessage, IP)>();
         spawn_bcast_threads(bcast_transmitter_rx, bcast_receiver_tx);
 
         RequestTransmitter {
@@ -378,45 +413,7 @@ impl RequestTransmitter {
     }
 
     pub fn announce_request(&self, request: Request) {
-        self.bcast_sender.send(request)
+        self.bcast_sender.send(BroadcastMessage::RequestMessage(request))
             .expect("Could not announce request");
     }
 }
-
-
-
-/*
-    pub fn local_is_minimal_cost(&self, ordered_floor: usize, floor: usize, direction: MotorDir,
-                           other_floors: [usize; 2], other_directions: [MotorDir; 2]) -> bool{      //TODO length of arrays must be NUM_elevators
-
-        let local_cost = self.calculate_cost(ordered_floor, floor, direction);
-
-        let min_extern_cost = 2 * N_FLOORS; // initialized to max-value of the cost function
-        for index in 0..2 {                                                                         //TODO length of arrays must be NUM_elevators
-            let extern_cost = self.calculate_cost(
-                ordered_floor, other_floors[index], other_directions[index]);
-            let min_extern_cost = if extern_cost < min_extern_cost {extern_cost} else {2*N_FLOORS};
-        }
-
-        if local_cost < min_extern_cost { return true; }
-        else if local_cost == min_extern_cost { return true;  }                                     // TODO lowest IP takes the order
-        else { return false; }
-    }
-
-    pub fn calculate_cost(&self, ordered_floor: usize, floor: usize, direction: MotorDir) -> usize{
-        // calculate the distance_cost: difference between ordered_floor and current_floor
-        let distance_cost = (ordered_floor as isize) - (floor as isize);
-        let distance_cost = if distance_cost < 0 { distance_cost * -1 } else { distance_cost };
-
-        // calculate the direction_cost: N_FLOORS if the order is in the opposite direction
-        let elevator_direction = match direction {
-            MotorDir::Down => 0,
-            _ => 1,
-        };
-        let order_direction = if (ordered_floor as isize) - (floor as isize) < 0 { 0 } else {1};
-        let direction_cost = if elevator_direction == order_direction {0} else {N_FLOORS};
-
-        return (distance_cost as usize) + (direction_cost as usize);
-    }
-}
-*/

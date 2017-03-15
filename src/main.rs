@@ -7,20 +7,11 @@ extern crate elevator;
 use elevator::elevator_driver::elev_io::*;
 use elevator::elevator_fsm::elevator_fsm::*;
 
-use std::fs::{File, OpenOptions};
-use std::io;
-use std::io::prelude::*;
-use std::time::{SystemTime, Duration};
-use std::thread;
-use std::str::*;
-use std::process::Command;
-use std::env::args;
-
 use std::sync::mpsc::channel;
 extern crate chrono;
 extern crate timer;
 use elevator::request_handler::*;
-use elevator::request_handler::request_handler::{RequestType};
+use elevator::request_handler::request_handler::BroadcastMessage;
 use std::rc::Rc;
 
 
@@ -72,8 +63,14 @@ fn main() {
             return;
         }
 
-        if elevator.door_timer.timeout() { elevator.event_doors_should_close(); }
-        if elevator.stuck_timer.timeout() { elevator.event_stuck(); panic!("Elevator is stuck."); }
+        if elevator.door_timer.timeout() {
+            elevator.event_doors_should_close();
+        }
+
+        if elevator.stuck_timer.timeout() {
+            elevator.event_stuck();
+            panic!("Elevator is stuck.");
+        }
 
         let (timer_tx, timer_rx) = channel::<()>();
         let timer = timer::Timer::new();
@@ -91,26 +88,19 @@ fn main() {
 
             },
             bcast_msg = request_rx.recv() => {
-                let (message, ip) = bcast_msg.unwrap();
-                //println!("Got bcast_msg: {:?}", message);
+                let (message, remote_ip) = bcast_msg.unwrap();
 
-                let result = elevator.request_handler.merge_incoming_request(&message, ip);
-
-                let button: Button = match (message.floor, message.request_type) {
-                    (floor, RequestType::CallUp) => Button::CallUp(Floor::At(floor)),
-                    (floor, RequestType::CallDown) => Button::CallDown(Floor::At(floor)),
-                    (floor, RequestType::Internal) => Button::Internal(Floor::At(floor)),
-                };
-
-                if let Some(Light::On) = result {
-                    elevator.event_button_light(button, Light::On);
-                } else if let Some(Light::Off) = result {
-                    elevator.event_button_light(button, Light::Off);
+                match message {
+                    BroadcastMessage::RequestMessage(request) => {
+                        elevator.event_request_message(&request, remote_ip);
+                    },
+                    BroadcastMessage::Position(floor) => {
+                        elevator.event_position_message(remote_ip, floor);
+                    },
                 }
             },
             _ = timer_rx.recv() => {
                 elevator.request_handler.announce_all_requests();
-                //elevator.request_handler.print();
             }
         }
     }

@@ -137,19 +137,17 @@ impl Elevator {
 
         if let State::Running = self.state {
             self.state = State::Idle;
-            self.set_floor_lights();
         }
 
         if let State::Idle = self.state {
+            self.set_floor_lights();
+
             let floor = match self.get_current_floor() {
                 Floor::At(floor) => floor,
                 Floor::Between => return,
             };
 
             if self.request_handler.should_stop(floor, self.current_direction) {
-                println!("");
-                println!("should stop floor {:?} direction {:?}", floor, self.current_direction);
-                println!("");
                 self.state = State::DoorOpen;
                 self.stop_and_open_doors();
             } else {
@@ -171,12 +169,33 @@ impl Elevator {
         }
     }
 
-    pub fn event_button_light(&mut self, button: Button, mode: Light) {
+    pub fn event_update_button_light(&mut self, button: Button, mode: Light) {
         self.io.set_button_light(button, mode);
     }
 
     pub fn event_stuck(&self) {
         self.io.set_motor_dir(MotorDir::Stop);
     }
+
+    pub fn event_request_message(&mut self, message: &Request, remote_ip: String) {
+        let result = self.request_handler.merge_incoming_request(&message, remote_ip);
+
+        let button: Button = match (message.floor, message.request_type) {
+            (floor, RequestType::CallUp) => Button::CallUp(Floor::At(floor)),
+            (floor, RequestType::CallDown) => Button::CallDown(Floor::At(floor)),
+            (floor, RequestType::Internal) => Button::Internal(Floor::At(floor)),
+        };
+
+        if let Some(Light::On) = result {
+            self.event_update_button_light(button, Light::On);
+        } else if let Some(Light::Off) = result {
+            self.event_update_button_light(button, Light::Off);
+        }
+    }
+
+    pub fn event_position_message(&mut self, remote_ip: String, position: usize) {
+        self.request_handler.handle_position_update(remote_ip, position);
+    }
+
 
 }
