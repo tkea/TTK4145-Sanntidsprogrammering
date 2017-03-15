@@ -30,30 +30,31 @@ fn main() {
     thread::spawn(move|| {
         let io = ElevIo::new().unwrap();
         let TOP_FLOOR = N_FLOORS-1;
-        for floor in 0..N_FLOORS {
-            // Buttons at current floor
-            let button_call_up = Button::CallUp(Floor::At(floor));
-            let button_call_down = Button::CallDown(Floor::At(floor));
-            let button_internal = Button::Internal(Floor::At(floor));
+        loop {
+            for floor in 0..N_FLOORS {
+                // Buttons at current floor
+                let button_call_up = Button::CallUp(Floor::At(floor));
+                let button_call_down = Button::CallDown(Floor::At(floor));
+                let button_internal = Button::Internal(Floor::At(floor));
 
-            if floor != TOP_FLOOR {
-                if let Signal::High = io.get_button_signal(button_call_up).unwrap() {
-                    button_tx.send(button_call_up);
+                if floor != TOP_FLOOR {
+                    if let Signal::High = io.get_button_signal(button_call_up).unwrap() {
+                        button_tx.send(button_call_up).unwrap();
+                    }
+                }
+
+                if floor != 0 {
+                    if let Signal::High = io.get_button_signal(button_call_down).unwrap() {
+                        button_tx.send(button_call_down).unwrap();
+                    }
+                }
+
+                if let Signal::High = io.get_button_signal(button_internal).unwrap() {
+                    button_tx.send(button_internal).unwrap();
                 }
             }
-
-            if floor != 0 {
-                if let Signal::High = io.get_button_signal(button_call_down).unwrap() {
-                    button_tx.send(button_call_down);
-                }
-            }
-
-            if let Signal::High = io.get_button_signal(button_internal).unwrap() {
-                button_tx.send(button_internal);
-            }
+            thread::sleep(time::Duration::from_millis(150));
         }
-
-        thread::sleep(time::Duration::from_millis(150));
     });
     thread::sleep(time::Duration::from_secs(1));
 
