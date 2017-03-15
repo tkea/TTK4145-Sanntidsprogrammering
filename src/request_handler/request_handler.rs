@@ -188,8 +188,15 @@ impl RequestHandler {
         }
     }
 
-    fn announce_request(&self, request: Request) {
-        self.request_transmitter.announce_request(request);
+    fn announce_request(&mut self, request: Request) {
+        // Only announce external requests.
+        if let RequestType::Internal = request.request_type {
+            let internal = RequestType::Internal as usize;
+            let floor = request.floor.clone();
+            self.requests[internal][floor] = request;
+        } else {
+            self.request_transmitter.announce_request(request);
+        }
     }
 
     pub fn announce_new_request(&mut self, button: &Button) {
@@ -210,7 +217,7 @@ impl RequestHandler {
         self.announce_request(request);
     }
 
-    pub fn announce_requests_cleared(&self, floor: usize, direction: MotorDir) {
+    pub fn announce_requests_cleared(&mut self, floor: usize, direction: MotorDir) {
         // Clears the requests at a floor.
         let hall_request_type = match direction {
             MotorDir::Up    => RequestType::CallUp,
@@ -366,11 +373,12 @@ impl RequestHandler {
         local_cost <= min_peer_cost
     }
 
-    pub fn announce_all_requests(&self) {
-        for t in self.requests.iter() {
-            for request in t.iter() {
-                self.announce_request(request.clone());
-            }
+    pub fn announce_all_requests(&mut self) {
+        let call_up = &self.requests[RequestType::CallUp as usize];
+        let call_down = &self.requests[RequestType::CallDown as usize];
+
+        for request in call_up.iter().chain(call_down.iter()) {
+            self.request_transmitter.announce_request(request.clone());
         }
     }
 }
