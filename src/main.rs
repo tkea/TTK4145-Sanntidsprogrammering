@@ -7,6 +7,7 @@ extern crate chrono;
 extern crate timer;
 
 extern crate elevator;
+use std::{thread, time};
 use elevator::elevator_driver::elev_io::*;
 use elevator::elevator_fsm::elevator_fsm::*;
 
@@ -26,8 +27,7 @@ fn main() {
     let ref request_rx = request_transmitter.bcast_receiver;
 
     let (button_tx, button_rx) = channel::<Button>();
-    let timer_floor_polling = timer::Timer::new();
-    let floor_polling_guard = timer_floor_polling.schedule_repeating(chrono::Duration::milliseconds(100), move|| {
+    thread::spawn(move|| {
         let io = ElevIo::new().unwrap();
         let TOP_FLOOR = N_FLOORS-1;
         for floor in 0..N_FLOORS {
@@ -52,8 +52,9 @@ fn main() {
                 button_tx.send(button_internal);
             }
         }
+
+        thread::sleep(time::Duration::from_millis(150));
     });
-    floor_polling_guard.ignore();
 
     loop {
 
@@ -61,30 +62,6 @@ fn main() {
             elevator.event_at_floor();
         } else {
             elevator.event_running();
-        }
-
-        let TOP_FLOOR = N_FLOORS-1;
-        for floor in 0..N_FLOORS {
-            // Buttons at current floor
-            let button_call_up = Button::CallUp(Floor::At(floor));
-            let button_call_down = Button::CallDown(Floor::At(floor));
-            let button_internal = Button::Internal(Floor::At(floor));
-
-            if floor != TOP_FLOOR {
-                if let Signal::High = elevator.io.get_button_signal(button_call_up).unwrap() {
-                    elevator.event_new_floor_order(button_call_up);
-                }
-            }
-
-            if floor != 0 {
-                if let Signal::High = elevator.io.get_button_signal(button_call_down).unwrap() {
-                    elevator.event_new_floor_order(button_call_down);
-                }
-            }
-
-            if let Signal::High = elevator.io.get_button_signal(button_internal).unwrap() {
-                elevator.event_new_floor_order(button_internal);
-            }
         }
 
         if let Signal::High = elevator.io.get_stop_signal()
