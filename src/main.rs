@@ -20,44 +20,16 @@ use std::sync::mpsc::channel;
 extern crate chrono;
 extern crate timer;
 use elevator::request_handler::*;
+use elevator::request_handler::request_handler::{RequestType};
 use std::rc::Rc;
 
 
-const FILEPATH: &'static str = "backup_data.txt";
-const TIMEOUT_MS: u64 = 3000;
-const PERIOD_MS: u64 = 1000;
-
-
-
 fn main() {
-    // backup waits for primary to die
-    println!("I'm backup");
-    let mut file = OpenOptions::new().read(true).write(true).create(true).open(FILEPATH).unwrap();
-    while {SystemTime::now().duration_since(file.metadata().unwrap().modified().unwrap()).unwrap() <= Duration::from_millis(TIMEOUT_MS)} {}
-    println!("Can't find primary");
-    let mut file_source = FILEPATH;
-    println!("The source is: \"{}\"", file_source);
-                                                                                                    // TODO read the backup data from the txt-file
-    println!("Spawning the backup");
-    let backup_spawning_command = Command::new("gnome-terminal").arg("-x").arg(args().nth(0).unwrap()).spawn();
-    println!("I'm the primary now");
-
-    // backup thread
-    thread::spawn(move || {
-        loop {
-            file.set_len(0);
-            file.seek(io::SeekFrom::Start(0));
-            file.write_fmt(format_args!("Her skal det skrives inn heisbestillinger."));             // TODO save the backup data to the txt-file
-            thread::sleep(Duration::from_millis(PERIOD_MS));
-        }
-    });
-
-    // primary loop
     let request_transmitter: Rc<request_handler::RequestTransmitter> = Rc::new(
         request_handler::RequestTransmitter::new()
     );
     let mut elevator = Elevator::new(request_transmitter.clone());
-
+    println!("e-elev");
     let ref peer_rx = request_transmitter.peer_receiver;
     let ref request_rx = request_transmitter.bcast_receiver;
 
@@ -104,7 +76,7 @@ fn main() {
 
         let (timer_tx, timer_rx) = channel::<()>();
         let timer = timer::Timer::new();
-        let timer_guard = timer.schedule_repeating(chrono::Duration::seconds(1), move ||{
+        let timer_guard = timer.schedule_repeating(chrono::Duration::milliseconds(75), move ||{
             timer_tx.send(()).unwrap();
         });
 
@@ -119,13 +91,25 @@ fn main() {
             },
             bcast_msg = request_rx.recv() => {
                 let (message, ip) = bcast_msg.unwrap();
-                println!("Got bcast_msg: {:?}", message);
+                //println!("Got bcast_msg: {:?}", message);
 
-                elevator.request_handler.merge_incoming_request(&message, ip);
+                let result = elevator.request_handler.merge_incoming_request(&message, ip);
+
+                let button: Button = match (message.floor, message.request_type) {
+                    (floor, RequestType::CallUp) => Button::CallUp(Floor::At(floor)),
+                    (floor, RequestType::CallDown) => Button::CallDown(Floor::At(floor)),
+                    (floor, RequestType::Internal) => Button::Internal(Floor::At(floor)),
+                };
+
+                if let Some(Light::On) = result {
+                    elevator.event_button_light(button, Light::On);
+                } else if let Some(Light::Off) = result {
+                    elevator.event_button_light(button, Light::Off);
+                }
             },
             _ = timer_rx.recv() => {
                 elevator.request_handler.announce_all_requests();
-                elevator.request_handler.print();
+                //elevator.request_handler.print();
             }
         }
     }

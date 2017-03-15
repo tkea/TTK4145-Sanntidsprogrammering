@@ -51,8 +51,18 @@ impl Elevator {
 
 
     fn stop_and_open_doors(&mut self) {
+        self.state = State::DoorOpen;
+
+        let current_floor = match self.get_current_floor() {
+            Floor::At(floor) => floor,
+            Floor::Between => return,
+        };
+
+        self.request_handler.announce_requests_cleared(current_floor, self.current_direction);
+
         self.io.set_motor_dir(MotorDir::Stop).unwrap();
         self.io.set_door_light(Light::On).unwrap();
+        self.clear_lights_at_floor(current_floor);
         self.timer.start();
     }
 
@@ -71,13 +81,6 @@ impl Elevator {
 
 
     fn close_doors(&mut self) {
-        let current_floor = match self.get_current_floor() {
-            Floor::At(floor) => floor,
-            Floor::Between => return,
-        };
-
-        self.request_handler.announce_requests_cleared(current_floor, self.current_direction);
-        self.clear_lights_at_floor(current_floor);
         self.io.set_door_light(Light::Off).unwrap();
     }
 
@@ -88,20 +91,21 @@ impl Elevator {
             Floor::Between => return,
         };
 
-        // orders in same direction, so continue
         if self.request_handler.should_continue(current_floor, self.current_direction) {
+            // orders in same direction, so continue
             self.io.set_motor_dir(self.current_direction);
             return;
         }
 
-        // orders in oppsite direction, so change direction
         if self.request_handler.should_change_direction(current_floor, self.current_direction) {
+            // orders in oppsite direction, so change direction
             let opposite_direction = match self.current_direction {
-                MotorDir::Down => MotorDir::Up,
-                _ => MotorDir::Down
+                MotorDir::Down  => MotorDir::Up,
+                MotorDir::Up    => MotorDir::Down,
+                _               => unreachable!(),
             };
 
-            self.io.set_motor_dir(opposite_direction);
+            //self.io.set_motor_dir(opposite_direction);
             self.current_direction = opposite_direction;
             return;
         }
@@ -136,7 +140,11 @@ impl Elevator {
                 Floor::At(floor) => floor,
                 Floor::Between => return,
             };
+
             if self.request_handler.should_stop(floor, self.current_direction) {
+                println!("");
+                println!("should stop floor {:?} direction {:?}", floor, self.current_direction);
+                println!("");
                 self.state = State::DoorOpen;
                 self.stop_and_open_doors();
             } else {
@@ -148,7 +156,6 @@ impl Elevator {
 
     pub fn event_new_floor_order(&mut self, button: Button){
         self.request_handler.announce_new_request(&button);
-        //self.io.set_button_light(button, Light::On);
     }
 
 
@@ -157,5 +164,9 @@ impl Elevator {
             self.state = State::Idle;
             self.close_doors();
         }
+    }
+
+    pub fn event_button_light(&mut self, button: Button, mode: Light) {
+        self.io.set_button_light(button, mode);
     }
 }

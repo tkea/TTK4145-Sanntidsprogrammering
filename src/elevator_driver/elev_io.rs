@@ -25,7 +25,7 @@ pub enum Button {
     Internal(Floor),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum MotorDir {
     Up,
     Down,

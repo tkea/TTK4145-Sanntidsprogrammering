@@ -19,7 +19,7 @@ impl BcastTransmitter {
             try!(udp.reuse_address(true));
             let socket = try!(udp.bind("0.0.0.0:0"));
             try!(socket.set_broadcast(true));
-            try!(socket.connect(("10.22.71.255", port)));
+            try!(socket.connect(("255.255.255.255", port)));
             socket
         };
         Ok(BcastTransmitter {
@@ -54,7 +54,7 @@ impl BcastReceiver {
         let conn = {
             let udp = try!(net2::UdpBuilder::new_v4());
             try!(udp.reuse_address(true));
-            let socket = try!(udp.bind(("10.22.71.255", port)));
+            let socket = try!(udp.bind(("255.255.255.255", port)));
             try!(socket.set_broadcast(true));
             socket
         };

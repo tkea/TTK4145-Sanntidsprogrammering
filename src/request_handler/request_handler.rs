@@ -17,7 +17,7 @@ use network::localip::get_localip;
 use network::peer::{PeerTransmitter, PeerReceiver, PeerUpdate};
 use network::bcast::{BcastTransmitter, BcastReceiver};
 
-use elevator_driver::elev_io::{Floor, Button, MotorDir};
+use elevator_driver::elev_io::{Floor, Button, MotorDir, Light};
 use std::rc::Rc;
 use self::RequestStatus::*;
 
@@ -30,7 +30,7 @@ type IP = String;
 type ElevatorID = IP;
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
-enum RequestType {
+pub enum RequestType {
     Internal = 2,
     CallUp = 1,
     CallDown = 0,
@@ -54,33 +54,38 @@ impl Default for RequestStatus {
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Request {
-    floor: usize,
-    request_type: RequestType,
+    pub floor: usize,
+    pub request_type: RequestType,
     status: RequestStatus,
     acknowledged_by: Vec<ElevatorID>,
 }
 
 impl Request {
-    fn move_to_active(&mut self) {
+    fn move_to_active(&mut self) -> RequestStatus {
         self.status = Active;
+        Active
     }
 
-    fn move_to_pending(&mut self) {
+    fn move_to_pending(&mut self) -> RequestStatus {
         self.status = Pending;
+        Pending
     }
 
-    fn move_to_inactive(&mut self) {
+    fn move_to_inactive(&mut self) -> RequestStatus {
         self.status = Inactive;
+        Inactive
     }
 
-    fn handle_unknown_local(&mut self, remote: &Request) {
+    fn handle_unknown_local(&mut self, remote: &Request) -> RequestStatus {
         self.floor = remote.floor;
         self.request_type = remote.request_type;
         self.status = remote.status;
         self.acknowledged_by = remote.acknowledged_by.clone();
+
+        self.status
     }
 
-    fn update_acknowledgements(&mut self, peers: &Vec<String>, remote_ip: String) {
+    fn update_acknowledgements(&mut self, peers: &Vec<String>, remote_ip: String) -> RequestStatus {
         let ref mut acknowledged_by = self.acknowledged_by;
         acknowledged_by.push(remote_ip);
         acknowledged_by.sort();
@@ -90,11 +95,12 @@ impl Request {
         for addr in peers.iter() {
             let ip = addr.split(":").next().unwrap().to_string();
             if !acknowledged_by.contains(&ip) {
-                return;
+                return Pending;
             }
         }
 
         self.status = Active;
+        Active
     }
 }
 
@@ -137,21 +143,27 @@ impl RequestHandler {
         &mut self.requests[request_type][floor]
     }
 
-    pub fn merge_incoming_request(&mut self, remote_request: &Request, remote_ip: String) {
+    pub fn merge_incoming_request(&mut self, remote_request: &Request, remote_ip: String) -> Option<Light> {
         let peers = self.peers.clone();
 
         let ref mut local_request = self.get_local_request(&remote_request);
 
-        let local_status = local_request.status;
+        let local_status = local_request.status.clone();
         let remote_status = remote_request.status;
 
-        match (local_status, remote_status) {
+        let new_status = match (local_status, remote_status) {
             (Active, Inactive)  => local_request.move_to_inactive(),
             (Inactive, Pending) => local_request.move_to_pending(),
             (Pending, Active)   => local_request.move_to_active(),
             (Pending, Pending)  => local_request.update_acknowledgements(&peers, remote_ip),
             (Unknown, _)        => local_request.handle_unknown_local(&remote_request),
-            _                   => return,
+            _                   => return None,
+        };
+
+        match (local_status, new_status) {
+            (Pending, Active)  => return Some(Light::On),
+            (Active, Inactive)  => return Some(Light::Off),
+            _                   => return None,
         }
     }
 
@@ -177,7 +189,7 @@ impl RequestHandler {
 
         let request = Request {
             floor: floor,
-            request_type: RequestType::CallUp,
+            request_type: request_type,
             status: Pending,
             ..Request::default()
         };
@@ -222,24 +234,21 @@ impl RequestHandler {
             _               => unreachable!(),
         };
 
-        if self.requests_in_direction(floor, opposite_direction) {
+        // Check opposite order on same floor
+        let request_opposite = match direction {
+            MotorDir::Up    => &self.requests[RequestType::CallDown as usize][floor],
+            MotorDir::Down  => &self.requests[RequestType::CallUp as usize][floor],
+            _               => unreachable!(),
+        };
+
+        if let Active = request_opposite.status {
             return true;
         }
 
-        // Handle edge case where current_floor == 0 || current_floor == top floor
-        let top_floor = N_FLOORS-1;
-        let is_at_top_or_bottom = floor == top_floor || floor == 0;
 
-        if is_at_top_or_bottom {
-            let request_opposite = match direction {
-                MotorDir::Up    => &self.requests[RequestType::CallDown as usize][floor],
-                MotorDir::Down  => &self.requests[RequestType::CallUp as usize][floor],
-                _               => unreachable!(),
-            };
-
-            if let Active = request_opposite.status {
-                return true;
-            }
+        // Check orders below
+        if self.requests_in_direction(floor, opposite_direction) {
+            return true;
         }
 
         false
@@ -286,10 +295,15 @@ impl RequestHandler {
 
         let mut orders = internal.chain(up).chain(down);
 
-        orders.any(|request| match request.status {
-            Active  => true,
-            _       => false,
-        })
+        let is_ordered = |request: &Request| {
+            if let Active = request.status {
+                return true;
+            } else {
+                return false;
+            }
+        };
+
+        orders.any(is_ordered)
     }
 
     fn calculate_cost(&self) {
