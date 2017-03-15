@@ -138,6 +138,32 @@ impl RequestHandler {
         }
     }
 
+
+    // serializes the internal orders as a string with 0 and 1,
+    // where the index is floor, 0 is unactive and 1 is active
+    pub fn back_it_up(&self) -> String {                                                   // used for backup
+        let mut order_string = String::new();
+        for request in &self.requests[RequestType::Internal as usize] {
+            let is_ordered = if request.status as usize == RequestStatus::Active as usize { 1 } else { 0 };
+            order_string.push_str(is_ordered.to_string().as_str());
+        }
+        return order_string;
+    }
+
+    // deserialises the internal orders and save them
+    pub fn save_internal_orders(&mut self, order_string: String) {
+       for (floor, is_ordered) in order_string.chars().enumerate() {
+           let status = if (is_ordered as usize) == 1 {RequestStatus::Active} else {RequestStatus::Inactive};
+           self.requests[RequestType::Internal as usize][floor].status = status;
+        }
+    }
+
+
+
+
+
+
+
     pub fn handle_peer_update(&mut self, peers: PeerUpdate<String>) {
         self.peers = peers.peers;
 
@@ -432,4 +458,5 @@ impl RequestTransmitter {
         self.bcast_sender.send(BroadcastMessage::RequestMessage(request))
             .expect("Could not announce request");
     }
+
 }

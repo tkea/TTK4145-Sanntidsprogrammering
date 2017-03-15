@@ -14,12 +14,56 @@ use elevator::request_handler::*;
 use elevator::request_handler::request_handler::BroadcastMessage;
 use std::rc::Rc;
 
+use std::fs::{File, OpenOptions};
+use std::io;
+use std::io::prelude::*;
+use std::time::{SystemTime, Duration};
+use std::thread;
+use std::str::*;
+use std::process::Command;
+use std::env::args;
+const BACKUP_FILE: &'static str = "backup_data.txt";
+const TIMEOUT_MS: u64 = 3000;
+const PERIOD_MS: u64 = 1000;
+
 
 fn main() {
+    println!("I'm backup");
+    let mut file = OpenOptions::new().read(true).write(true).create(true).open(BACKUP_FILE).unwrap();
+    while
+    {SystemTime::now().duration_since(file.metadata().unwrap().modified().unwrap()).unwrap() <= Duration::from_millis(TIMEOUT_MS)}
+    {}
+
     let request_transmitter: Rc<request_handler::RequestTransmitter> = Rc::new(
         request_handler::RequestTransmitter::new()
     );
     let mut elevator = Elevator::new(request_transmitter.clone());
+
+    let mut backup = String::new();
+    file.read_to_string(&mut backup);
+    elevator.request_handler.save_internal_orders(backup);
+
+    println!("Spawning the backup");
+    let backup_spawning_command = Command::new("gnome-terminal").arg("-x").arg(args().nth(0).unwrap()).spawn();
+    println!("I'm the primary now");
+
+    // writes to BACKUP_FILE every PERIOD_MS
+    thread::spawn(move || {
+        loop {
+            file.set_len(0);
+            file.seek(io::SeekFrom::Start(0));
+            file.write_fmt(format_args!("Heihei")); //elevator.request_handler.back_it_up()
+            thread::sleep(Duration::from_millis(PERIOD_MS));
+        }
+    });
+
+
+
+
+
+
+
+
 
     let ref peer_rx = request_transmitter.peer_receiver;
     let ref request_rx = request_transmitter.bcast_receiver;
