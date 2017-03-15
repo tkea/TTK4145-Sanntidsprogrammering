@@ -20,7 +20,7 @@ fn main() {
         request_handler::RequestTransmitter::new()
     );
     let mut elevator = Elevator::new(request_transmitter.clone());
-    println!("e-elev");
+
     let ref peer_rx = request_transmitter.peer_receiver;
     let ref request_rx = request_transmitter.bcast_receiver;
 
@@ -73,10 +73,12 @@ fn main() {
         }
 
         let (timer_tx, timer_rx) = channel::<()>();
+
         let timer = timer::Timer::new();
         let timer_guard = timer.schedule_repeating(chrono::Duration::milliseconds(300), move|| {
             timer_tx.send(());
         });
+
 
         timer_guard.ignore();
 
@@ -100,6 +102,7 @@ fn main() {
                 }
             },
             _ = timer_rx.recv() => {
+                request_transmitter.bcast_sender.send(BroadcastMessage::Position(elevator.current_floor));
                 elevator.request_handler.announce_all_requests();
             }
         }

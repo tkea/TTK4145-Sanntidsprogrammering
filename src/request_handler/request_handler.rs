@@ -392,7 +392,7 @@ fn spawn_bcast_threads(transmit_rx: Receiver<BroadcastMessage>, receive_tx: Send
 }
 
 pub struct RequestTransmitter {
-    bcast_sender: Sender<BroadcastMessage>,
+    pub bcast_sender: Sender<BroadcastMessage>,
     pub bcast_receiver: Receiver<(BroadcastMessage, IP)>,
     pub peer_receiver: Receiver<PeerUpdate<IP>>,
 }

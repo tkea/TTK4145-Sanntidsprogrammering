@@ -15,6 +15,7 @@ enum State {
 
 pub struct Elevator {
     pub io: ElevIo,
+    pub current_floor: usize,
     current_direction: MotorDir,
     state: State,
     pub request_handler: RequestHandler,
@@ -31,10 +32,16 @@ impl Elevator {
         let door_timer = Timer::new(2);
         let stuck_timer = Timer::new(5);
 
+        let current_floor = match elevator_io.get_floor_signal().unwrap() {
+            Floor::At(floor) => floor,
+            Floor::Between => unreachable!(),
+        };
+
         elevator_io.set_motor_dir(MotorDir::Down);
 
         let elevator = Elevator {
             io: elevator_io,
+            current_floor: current_floor,
             current_direction: MotorDir::Down,
             state: State::Idle,
             request_handler: request_handler,
@@ -146,6 +153,8 @@ impl Elevator {
                 Floor::At(floor) => floor,
                 Floor::Between => return,
             };
+
+            self.current_floor = floor;
 
             if self.request_handler.should_stop(floor, self.current_direction) {
                 self.state = State::DoorOpen;
