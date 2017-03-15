@@ -56,8 +56,9 @@ fn main() {
             thread::sleep(time::Duration::from_millis(20));
         }
     });
+    println!("creating");
     thread::sleep(time::Duration::from_secs(1));
-    print!("ready!");
+    println!("ready!");
 
     loop {
 
