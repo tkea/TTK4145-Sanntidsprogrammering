@@ -22,7 +22,7 @@ use request_handler::request_transmitter::*;
 
 
 pub struct RequestHandler {
-    requests: Vec<Vec<Request>>,
+    pub requests: Vec<Vec<Request>>,
     peers: Vec<String>,
     peer_positions: HashMap<IP, usize>,
     request_transmitter: Rc<RequestTransmitter>,
@@ -106,14 +106,7 @@ impl RequestHandler {
     }
 
     fn announce_request(&mut self, request: Request) {
-        // Only announce external requests.
-        if let RequestType::Internal = request.request_type {
-            let internal = RequestType::Internal as usize;
-            let floor = request.floor.clone();
-            self.requests[internal][floor] = request;
-        } else {
-            self.request_transmitter.announce_request(request);
-        }
+        self.request_transmitter.announce_request(request);
     }
 
     pub fn announce_new_request(&mut self, button: &Button) {

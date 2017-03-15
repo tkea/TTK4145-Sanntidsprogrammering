@@ -162,7 +162,19 @@ impl Elevator {
 
 
     pub fn event_new_floor_order(&mut self, button: Button){
-        self.request_handler.announce_new_request(&button);
+        if let Button::Internal(Floor::At(floor)) = button {
+            let internal = RequestType::Internal as usize;
+            self.request_handler.requests[internal][floor] = Request {
+                floor: floor,
+                request_type: RequestType::Internal,
+                status:RequestStatus::Active,
+                ..Request::default()
+            };
+            self.event_update_button_light(button, Light::On);
+        } else {
+            self.request_handler.announce_new_request(&button);
+        }
+
     }
 
 
