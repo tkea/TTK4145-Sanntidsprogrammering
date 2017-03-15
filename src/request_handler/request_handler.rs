@@ -317,6 +317,7 @@ impl RequestHandler {
 
     fn request_is_ordered(&self, request: &Request) -> bool {
         if let Active = request.status {
+            println!("request {:?}", request);
             return true;
         } else {
             return false;
@@ -345,7 +346,7 @@ impl RequestHandler {
                 min_peer_cost = cost;
             }
         }
-
+        println!("local cost {:?} minpeer {:?}", local_cost, min_peer_cost);
         local_cost <= min_peer_cost
     }
 
