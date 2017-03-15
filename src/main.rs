@@ -109,6 +109,10 @@ fn main() {
             _ = timer_rx.recv() => {
                 request_transmitter.bcast_sender.send(BroadcastMessage::Position(elevator.current_floor));
                 elevator.request_handler.announce_all_requests();
+            },
+            button_msg = button_rx.recv() => {
+                let button = button_msg.unwrap();
+                elevator.event_new_floor_order(button);
             }
         }
     }
