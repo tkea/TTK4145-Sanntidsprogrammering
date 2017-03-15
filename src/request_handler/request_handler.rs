@@ -229,14 +229,13 @@ impl RequestHandler {
         };
 
         let i_iter = requests_internal .iter().skip(lower_bound).take(num_elements);
-        let u_iter = requests_up       .iter().skip(lower_bound).take(num_elements);
-        let d_iter = requests_down     .iter().skip(lower_bound).take(num_elements);
+        let u_iter = requests_up       .iter().skip(lower_bound).take(num_elements).filter(|request| self.request_is_assigned_locally(&request, floor));
+        let d_iter = requests_down     .iter().skip(lower_bound).take(num_elements).filter(|request| self.request_is_assigned_locally(&request, floor));
 
         let requests = i_iter.chain(u_iter).chain(d_iter);
 
         requests
             .filter(|request| self.request_is_ordered(&request))
-            .filter(|request| self.request_is_assigned_locally(&request, floor))
             .count() > 0
     }
 
