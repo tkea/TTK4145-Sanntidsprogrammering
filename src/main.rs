@@ -15,21 +15,6 @@ use elevator::request_handler::request_transmitter::*;
 use elevator::request_handler::request_transmitter::BroadcastMessage;
 use std::rc::Rc;
 
-use std::env;
-use std::process::Command;
-
-fn spawn_backup() {
-    let args = env::args();
-    if args.len() != 1 {
-        let mut child = Command::new("cargo")
-                            .arg("run -- main")
-                            .spawn()
-                            .unwrap();
-
-        println!("im a backup");
-        child.wait().unwrap();
-    }
-}
 
 fn main() {
     let request_transmitter: Rc<RequestTransmitter> = Rc::new(
