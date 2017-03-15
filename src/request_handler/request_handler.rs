@@ -181,9 +181,9 @@ impl RequestHandler {
 
     pub fn announce_new_request(&mut self, button: &Button) {
         let (request_type, floor) = match button {
-            &Button::Internal(Floor::At(floor))  => (RequestType::Internal,  floor),
-            &Button::CallUp(Floor::At(floor))    => (RequestType::CallUp,    floor),
-            &Button::CallDown(Floor::At(floor))  => (RequestType::CallDown,  floor),
+            &Button::Internal(Floor::At(floor)) => (RequestType::Internal,  floor),
+            &Button::CallUp(Floor::At(floor))   => (RequestType::CallUp,    floor),
+            &Button::CallDown(Floor::At(floor)) => (RequestType::CallDown,  floor),
             _                                   => return,
         };
 

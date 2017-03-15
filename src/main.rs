@@ -76,8 +76,8 @@ fn main() {
 
         let (timer_tx, timer_rx) = channel::<()>();
         let timer = timer::Timer::new();
-        let timer_guard = timer.schedule_repeating(chrono::Duration::milliseconds(75), move ||{
-            timer_tx.send(()).unwrap();
+        let timer_guard = timer.schedule_repeating(chrono::Duration::milliseconds(300), move|| {
+            timer_tx.send(());
         });
 
         timer_guard.ignore();
