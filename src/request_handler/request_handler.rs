@@ -143,7 +143,7 @@ impl RequestHandler {
     // where the index is floor, 0 is unactive and 1 is active
     pub fn back_it_up(&self) -> String {                                                   // used for backup
         let mut order_string = String::new();
-        for request in &self.requests[RequestType::Internal as usize] {
+        for request in &self.requests[(RequestType::Internal as usize)-1] {
             let is_ordered = if request.status as usize == RequestStatus::Active as usize { 1 } else { 0 };
             order_string.push_str(is_ordered.to_string().as_str());
         }
