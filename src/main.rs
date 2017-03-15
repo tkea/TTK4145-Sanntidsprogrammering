@@ -25,6 +25,36 @@ fn main() {
     let ref peer_rx = request_transmitter.peer_receiver;
     let ref request_rx = request_transmitter.bcast_receiver;
 
+    let (button_tx, button_rx) = channel::<Button>();
+    let timer_floor_polling = timer::Timer::new();
+    let floor_polling_guard = timer_floor_polling.schedule_repeating(chrono::Duration::milliseconds(100), move|| {
+        let io = ElevIo::new().unwrap();
+        let TOP_FLOOR = N_FLOORS-1;
+        for floor in 0..N_FLOORS {
+            // Buttons at current floor
+            let button_call_up = Button::CallUp(Floor::At(floor));
+            let button_call_down = Button::CallDown(Floor::At(floor));
+            let button_internal = Button::Internal(Floor::At(floor));
+
+            if floor != TOP_FLOOR {
+                if let Signal::High = io.get_button_signal(button_call_up).unwrap() {
+                    button_tx.send(button_call_up);
+                }
+            }
+
+            if floor != 0 {
+                if let Signal::High = io.get_button_signal(button_call_down).unwrap() {
+                    button_tx.send(button_call_down);
+                }
+            }
+
+            if let Signal::High = io.get_button_signal(button_internal).unwrap() {
+                button_tx.send(button_internal);
+            }
+        }
+    });
+    floor_polling_guard.ignore();
+
     loop {
 
         if let Floor::At(_) = elevator.io.get_floor_signal().unwrap() {
