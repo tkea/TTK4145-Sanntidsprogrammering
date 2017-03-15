@@ -72,7 +72,8 @@ fn main() {
             return;
         }
 
-        if elevator.timer.timeout() { elevator.event_doors_should_close(); }
+        if elevator.door_timer.timeout() { elevator.event_doors_should_close(); }
+        if elevator.stuck_timer.timeout() { elevator.event_stuck(); panic!("Elevator is stuck."); }
 
         let (timer_tx, timer_rx) = channel::<()>();
         let timer = timer::Timer::new();

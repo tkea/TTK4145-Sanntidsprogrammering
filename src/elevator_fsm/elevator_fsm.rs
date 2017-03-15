@@ -3,7 +3,7 @@
 
 use elevator_driver::elev_io::*;
 use request_handler::request_handler::*;
-use door_timer::door_timer::*;
+use elevator_timer::elevator_timer::*;
 use std::rc::Rc;
 
 enum State {
@@ -18,7 +18,8 @@ pub struct Elevator {
     current_direction: MotorDir,
     state: State,
     pub request_handler: RequestHandler,
-    pub timer: Timer,
+    pub door_timer: Timer,
+    pub stuck_timer: Timer,
 }
 
 
@@ -27,7 +28,8 @@ impl Elevator {
     pub fn new(request_transmitter: Rc<RequestTransmitter>) -> Self {
         let elevator_io = ElevIo::new().expect("Init of HW failed");
         let request_handler = RequestHandler::new(request_transmitter);
-        let timer = Timer::new();
+        let door_timer = Timer::new(2);
+        let stuck_timer = Timer::new(5);
 
         elevator_io.set_motor_dir(MotorDir::Down);
 
@@ -36,7 +38,8 @@ impl Elevator {
             current_direction: MotorDir::Down,
             state: State::Idle,
             request_handler: request_handler,
-            timer: timer,
+            door_timer: door_timer,
+            stuck_timer: stuck_timer,
         };
 
         return elevator;
@@ -63,7 +66,7 @@ impl Elevator {
         self.io.set_motor_dir(MotorDir::Stop).unwrap();
         self.io.set_door_light(Light::On).unwrap();
         self.clear_lights_at_floor(current_floor);
-        self.timer.start();
+        self.door_timer.start();
     }
 
 
@@ -130,6 +133,8 @@ impl Elevator {
 
 
     pub fn event_at_floor(&mut self) {
+        self.stuck_timer.start();
+
         if let State::Running = self.state {
             self.state = State::Idle;
             self.set_floor_lights();
@@ -169,4 +174,9 @@ impl Elevator {
     pub fn event_button_light(&mut self, button: Button, mode: Light) {
         self.io.set_button_light(button, mode);
     }
+
+    pub fn event_stuck(&self) {
+        self.io.set_motor_dir(MotorDir::Stop);
+    }
+
 }

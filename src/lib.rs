@@ -16,4 +16,4 @@ pub mod elevator_driver;
 pub mod elevator_fsm;
 pub mod request_handler;
 pub mod network;
-pub mod door_timer;
+pub mod elevator_timer;

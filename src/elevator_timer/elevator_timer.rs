@@ -3,8 +3,6 @@
 
 use std::time::{Duration, Instant};
 
-const TIMER_DURATION: u64 = 1;
-
 pub struct Timer {
     start_time: Instant,
     duration:   Duration,
@@ -12,9 +10,9 @@ pub struct Timer {
 
 impl Timer {
 
-    pub fn new() -> Self {
+    pub fn new(timer_duration: u64) -> Self {
         let start_time = Instant::now();
-        let duration = Duration::new(TIMER_DURATION, 0);
+        let duration = Duration::new(timer_duration, 0);
 
         let timer = Timer {
             start_time: start_time,
