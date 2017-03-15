@@ -17,7 +17,7 @@ extern crate net2;
 use net2::UdpBuilder;
 
 const INTERVAL_NS: u32 = 20_000_000; // 20 ms
-const TIMEOUT_NS: u32 = 100_000_000; // 100 ms
+const TIMEOUT_NS: u32 = 500_000_000; // 100 ms
 
 #[derive(Debug)]
 pub struct PeerUpdate<T> {
