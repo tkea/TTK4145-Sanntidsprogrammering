@@ -317,7 +317,6 @@ impl RequestHandler {
 
     fn request_is_ordered(&self, request: &Request) -> bool {
         if let Active = request.status {
-            println!("request {:?}", request);
             return true;
         } else {
             return false;
@@ -342,10 +341,12 @@ impl RequestHandler {
         let mut min_peer_cost = 2*N_FLOORS;
 
         for (peer, position) in &self.peer_positions {
-            let cost = self.calculate_cost(&request, *position);
-            if cost < min_peer_cost {
-                min_peer_ip = &peer;
-                min_peer_cost = cost;
+            if peer != local_ip {
+                let cost = self.calculate_cost(&request, *position);
+                if cost < min_peer_cost {
+                    min_peer_ip = &peer;
+                    min_peer_cost = cost
+                }
             }
         }
 
@@ -358,7 +359,7 @@ impl RequestHandler {
             };
             let local: i32 = str::parse(&ip_to_cost(local_ip)).unwrap();
             let remote: i32 = str::parse(&ip_to_cost(min_peer_ip)).unwrap();
-            println!("{:?} {:?}", local, remote);
+
             return local <= remote;
         }
 
