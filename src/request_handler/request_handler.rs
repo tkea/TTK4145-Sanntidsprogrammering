@@ -356,10 +356,9 @@ impl RequestHandler {
                     .split(".").skip(3).take(1).next().unwrap()
                     .to_string()
             };
-
             let local: i32 = str::parse(&ip_to_cost(local_ip)).unwrap();
             let remote: i32 = str::parse(&ip_to_cost(min_peer_ip)).unwrap();
-
+            println!("{:?} {:?}", local, remote);
             return local <= remote;
         }
 
