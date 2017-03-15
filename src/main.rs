@@ -55,6 +55,7 @@ fn main() {
 
         thread::sleep(time::Duration::from_millis(150));
     });
+    thread::sleep(time::Duration::from_secs(1));
 
     loop {
 
