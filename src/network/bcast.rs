@@ -40,7 +40,7 @@ impl BcastTransmitter {
     {
         loop {
             let msg = bcast_rx.recv().unwrap();
-            self.transmit(&msg).expect("Transmission of data failed for BcastTransmitter");
+            self.transmit(&msg);
         }
     }
 }

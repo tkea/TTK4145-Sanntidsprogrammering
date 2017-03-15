@@ -137,7 +137,7 @@ impl PeerTransmitter {
                 continue;
             }
             drop(enabled);
-            self.transmit(data).expect("Transmission of data failed for PeerTransmitter");
+            self.transmit(data);
         }
     }
 }
